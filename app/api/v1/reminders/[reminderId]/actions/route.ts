@@ -1,0 +1,6 @@
+import { actOnReminder } from "../../../../../../src/modules/reminders";
+import { requireUserId } from "../../../../../../src/modules/auth/request";
+import { errorResponse } from "../../../../../../src/shared/errors";
+
+type Context = { params: Promise<{ reminderId: string }> };
+export async function POST(request: Request, context: Context): Promise<Response> { try { const params = await context.params; return new Response(JSON.stringify({ data: await actOnReminder(await requireUserId(request), params.reminderId, await request.json()) }), { headers: { "content-type": "application/json; charset=utf-8" } }); } catch (error) { return errorResponse(error); } }
