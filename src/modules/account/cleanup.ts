@@ -3,6 +3,7 @@ import { cards, feeCycles, feeEvents, progressEntries, reminderRules, reminders,
 import { authRepository } from "../auth";
 import { getDatabase } from "../../shared/db/client";
 import { getMemoryStore } from "../../shared/store/memory";
+import { recordAudit } from "../../shared/audit";
 
 export async function runAccountCleanup() {
   const users = await authRepository.listDeletionRequestedUsers();
@@ -13,6 +14,14 @@ export async function runAccountCleanup() {
     } else {
       cleanupMemory(user.id);
     }
+    await recordAudit({
+      userId: user.id,
+      actorType: "system",
+      action: "account.anonymized",
+      entityType: "user",
+      entityId: user.id,
+      metadata: {},
+    });
     await authRepository.anonymizeUser(user.id);
     anonymizedUsers.push(user.id);
   }

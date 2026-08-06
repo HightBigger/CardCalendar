@@ -73,6 +73,19 @@ type ApiFeeEvent = {
   notes?: string | null;
 };
 
+type ApiFeeEventHistory = {
+  id: string;
+  action: string;
+  occurredAt: string;
+  metadata: {
+    fromStatus?: string;
+    toStatus?: string;
+    actualAmount?: number | string | null;
+    occurredOn?: string | null;
+    notes?: string | null;
+  };
+};
+
 type ApiReminder = {
   id: string;
   cardId?: string | null;
@@ -119,6 +132,7 @@ type CardDetail = {
   card: ApiCard;
   cycles: ApiCycle[];
   progress: Record<string, ProgressData>;
+  eventHistory: Record<string, ApiFeeEventHistory[]>;
 };
 
 type CardDraft = {
@@ -333,7 +347,16 @@ export function CardCalendarApp() {
         );
         progress[cycle.id] = progressRes.data;
       }
-      setDetail({ card, cycles: cycleRes.data, progress });
+      const cardEvents = events.filter((event) => event.cardId === card.id);
+      const historyEntries = await Promise.all(
+        cardEvents.map(async (event) => {
+          const historyRes = await apiJson<ApiFeeEventHistory[]>(
+            "/api/v1/fee-events/" + event.id + "/history",
+          );
+          return [event.id, historyRes.data] as const;
+        }),
+      );
+      setDetail({ card, cycles: cycleRes.data, progress, eventHistory: Object.fromEntries(historyEntries) });
     } catch (caught) {
       showNotice(caught instanceof Error ? caught.message : "卡片详情加载失败");
     } finally {
@@ -589,7 +612,7 @@ export function CardCalendarApp() {
       )}
 
       {activeCard && (
-        <CardDetailModal
+            <CardDetailModal
           detail={detail}
           loading={detailLoading}
           events={events}
@@ -606,8 +629,9 @@ export function CardCalendarApp() {
           onAddProgress={addProgress}
           onEditProgress={editProgress}
           onReverseProgress={reverseProgress}
-          onUpdateEvent={updateEventStatus}
-        />
+              onUpdateEvent={updateEventStatus}
+              eventHistory={detail?.eventHistory ?? {}}
+            />
       )}
     </main>
   );
@@ -1393,6 +1417,7 @@ function CardDetailModal(props: {
   detail: CardDetail | null;
   loading: boolean;
   events: ApiFeeEvent[];
+  eventHistory: Record<string, ApiFeeEventHistory[]>;
   onClose: () => void;
   onEdit: () => void;
   onArchive: () => void;
@@ -1442,6 +1467,7 @@ function CardDetailModal(props: {
                     cycle={cycle}
                     progress={progress}
                     event={event}
+                    eventHistory={event ? props.eventHistory[event.id] ?? [] : []}
                     onAddProgress={props.onAddProgress}
                     onEditProgress={props.onEditProgress}
                     onReverseProgress={props.onReverseProgress}
@@ -1461,6 +1487,7 @@ function CyclePanel(props: {
   cycle: ApiCycle;
   progress?: ProgressData;
   event?: ApiFeeEvent;
+  eventHistory: ApiFeeEventHistory[];
   onAddProgress: (cycleId: string, entryDate: string, countDelta: number, amountDelta: number, note: string) => void;
   onEditProgress: (cycleId: string, entryId: string, entryDate: string, countDelta: number, amountDelta: number, note: string) => void;
   onReverseProgress: (cycleId: string, entryId: string) => void;
@@ -1601,6 +1628,22 @@ function CyclePanel(props: {
             <label>备注<input value={eventNote} onChange={(event) => setEventNote(event.target.value)} /></label>
             <button className="secondary-button" onClick={submitEvent} type="button">保存事件状态</button>
           </div>
+          {props.eventHistory.length > 0 && (
+            <div className="event-history">
+              <span className="progress-entry-heading">处理历史</span>
+              {props.eventHistory.slice(0, 6).map((item) => (
+                <div className="event-history-row" key={item.id}>
+                  <span>{fmtDate(item.occurredAt)}</span>
+                  <strong>
+                    {STATUS_LABEL[item.metadata.fromStatus ?? "pending"] ?? item.metadata.fromStatus ?? "待确认"}
+                    {" → "}
+                    {STATUS_LABEL[item.metadata.toStatus ?? "pending"] ?? item.metadata.toStatus ?? "待确认"}
+                  </strong>
+                  <span>{item.metadata.notes || "状态更新"}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </section>

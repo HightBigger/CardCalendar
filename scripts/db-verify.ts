@@ -60,6 +60,7 @@ async function main() {
       }
     },
   });
+  let closeApplicationDatabase: (() => Promise<void>) | undefined;
 
   try {
     console.log(`启动临时 PostgreSQL（端口 ${port}）`);
@@ -70,8 +71,40 @@ async function main() {
     const env = { ...process.env, DATABASE_URL: databaseUrl };
     await runCommand(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "db:migrate"], env);
     await runCommand(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "db:smoke"], env);
+
+    const userId = crypto.randomUUID();
+    const client = pg.getPgClient(databaseName, "127.0.0.1");
+    await client.connect();
+    try {
+      await client.query(
+        "insert into users (id, email, password_hash, timezone) values ($1, $2, $3, $4)",
+        [userId, "db-verify@example.com", "db-verify-only", "Asia/Shanghai"],
+      );
+    } finally {
+      await client.end();
+    }
+
+    process.env.DATABASE_URL = databaseUrl;
+    process.env.USE_DATABASE = "true";
+    const databaseModule = await import("../src/shared/db/client");
+    closeApplicationDatabase = () => databaseModule.getDatabase().pool.end();
+    const { listAuditLogs, recordAudit } = await import("../src/shared/audit");
+    await recordAudit({
+      userId,
+      actorType: "system",
+      action: "database.verified",
+      entityType: "user",
+      entityId: userId,
+      metadata: { source: "db:verify" },
+    });
+    const logs = await listAuditLogs(userId, "user", userId);
+    if (logs.length !== 1 || logs[0].action !== "database.verified") {
+      throw new Error("audit_logs 写入或读取验证失败");
+    }
+    console.log("audit persistence ok");
     console.log("db verify passed");
   } finally {
+    await closeApplicationDatabase?.().catch(() => undefined);
     await pg.stop().catch((error) => {
       console.error("停止临时 PostgreSQL 失败", error);
     });

@@ -4,6 +4,7 @@ import { assertRecord, optionalString } from "../../shared/validation";
 import type { AuthRepository } from "./domain";
 import { authRepository } from "./repository";
 import { createSessionToken, hashSessionToken, SESSION_MAX_AGE_SECONDS } from "./session";
+import { recordAudit } from "../../shared/audit";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function isValidTimezone(value: string): boolean {
@@ -44,6 +45,15 @@ export async function registerUser(
   const passwordHash = await hash(password);
   const user = await repository.createUser({ email, passwordHash, timezone, name });
   const session = await createUserSession(user.id, repository);
+  await recordAudit({
+    userId: user.id,
+    actorType: "user",
+    actorId: user.id,
+    action: "auth.registered",
+    entityType: "user",
+    entityId: user.id,
+    metadata: {},
+  });
   return { user: publicProfile(user), token: session.token, expiresIn: SESSION_MAX_AGE_SECONDS };
 }
 
@@ -62,6 +72,15 @@ export async function loginUser(
   if (!valid) throw new AppError("UNAUTHENTICATED", "邮箱或密码错误");
 
   const session = await createUserSession(user.id, repository);
+  await recordAudit({
+    userId: user.id,
+    actorType: "user",
+    actorId: user.id,
+    action: "auth.logged_in",
+    entityType: "user",
+    entityId: user.id,
+    metadata: {},
+  });
   return { user: publicProfile(user), token: session.token, expiresIn: SESSION_MAX_AGE_SECONDS };
 }
 
@@ -71,7 +90,18 @@ export async function logoutSession(
 ) {
   if (!token) return;
   const session = await repository.findSessionByTokenHash(hashSessionToken(token));
-  if (session) await repository.revokeSession(session.id);
+  if (session) {
+    await repository.revokeSession(session.id);
+    await recordAudit({
+      userId: session.userId,
+      actorType: "user",
+      actorId: session.userId,
+      action: "auth.logged_out",
+      entityType: "user",
+      entityId: session.userId,
+      metadata: {},
+    });
+  }
 }
 
 export async function getSessionUser(
@@ -100,6 +130,15 @@ export async function updateProfile(
   if (body.name !== undefined) patch.name = optionalString(body.name, "name", 80);
   const user = await repository.updateUser(userId, patch);
   if (!user) throw new AppError("NOT_FOUND", "用户不存在");
+  await recordAudit({
+    userId,
+    actorType: "user",
+    actorId: userId,
+    action: "profile.updated",
+    entityType: "user",
+    entityId: userId,
+    metadata: { changedFields: Object.keys(patch) },
+  });
   return publicProfile(user);
 }
 
@@ -115,6 +154,15 @@ export async function requestAccountDeletion(
   const user = await repository.updateUser(userId, { status: "deletion_requested" });
   if (!user) throw new AppError("NOT_FOUND", "用户不存在");
   await repository.revokeAllSessions(userId);
+  await recordAudit({
+    userId,
+    actorType: "user",
+    actorId: userId,
+    action: "account.deletion_requested",
+    entityType: "user",
+    entityId: userId,
+    metadata: {},
+  });
   return { status: "deletion_requested", requestedAt: new Date().toISOString() };
 }
 

@@ -7,6 +7,7 @@ export interface MemoryStore {
   progressEntries: Map<string, unknown>;
   reminderRules: Map<string, unknown>;
   reminders: Map<string, unknown>;
+  auditLogs: Map<string, unknown>;
 }
 
 const globalStore = globalThis as typeof globalThis & {
@@ -24,11 +25,13 @@ export function getMemoryStore(): MemoryStore {
       progressEntries: new Map(),
       reminderRules: new Map(),
       reminders: new Map(),
+      auditLogs: new Map(),
     };
   }
   const store = globalStore.__cardcalendarMemoryStore;
   if (!store.users) store.users = new Map();
   if (!store.sessions) store.sessions = new Map();
   if (!store.reminderRules) store.reminderRules = new Map();
+  if (!store.auditLogs) store.auditLogs = new Map();
   return store;
 }

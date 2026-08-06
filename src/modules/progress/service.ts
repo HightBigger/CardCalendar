@@ -4,6 +4,7 @@ import { assertRecord, nonNegativeInteger, nonNegativeNumber, optionalString } f
 import { cycleRepository, CycleRepository, getCycle } from "../cycles";
 import { applyProgressEntry, calculateProgress } from "./domain";
 import { progressRepository, ProgressRepository } from "./repository";
+import { recordAudit } from "../../shared/audit";
 
 export async function addProgressEntry(userId: string, cycleId: string, value: unknown, cycles: CycleRepository = cycleRepository, entries: ProgressRepository = progressRepository) {
   const cycle = await getCycle(userId, cycleId, cycles);
@@ -14,6 +15,15 @@ export async function addProgressEntry(userId: string, cycleId: string, value: u
   const all = await entries.list(userId, cycleId); const valueNow = all.reduce((sum, item) => applyProgressEntry(sum, { count: item.countDelta, amount: item.amountDelta }), { count: 0, amount: 0 });
   const progress = calculateProgress({ type: cycle.waiveRuleType, targetCount: cycle.targetCount, targetAmount: cycle.targetAmount }, valueNow);
   if (progress.qualified && cycle.status === "open") await cycles.save({ ...cycle, status: "qualified" });
+  await recordAudit({
+    userId,
+    actorType: "user",
+    actorId: userId,
+    action: "progress.added",
+    entityType: "progress_entry",
+    entityId: entry.id,
+    metadata: { cycleId, countDelta, amountDelta },
+  });
   return { entry, progress };
 }
 
@@ -43,6 +53,15 @@ export async function editProgressEntry(
   const progress = calculateProgress({ type: cycle.waiveRuleType, targetCount: cycle.targetCount, targetAmount: cycle.targetAmount }, valueNow);
   if (progress.qualified && cycle.status === "open") await cycles.save({ ...cycle, status: "qualified" });
   if (!progress.qualified && cycle.status === "qualified") await cycles.save({ ...cycle, status: "open" });
+  await recordAudit({
+    userId,
+    actorType: "user",
+    actorId: userId,
+    action: "progress.updated",
+    entityType: "progress_entry",
+    entityId: entry.id,
+    metadata: { cycleId, countDelta, amountDelta },
+  });
   return { entry, progress };
 }
 
@@ -81,6 +100,15 @@ export async function reverseProgressEntry(
   if (!progress.qualified && cycle.status === "qualified") {
     await cycles.save({ ...cycle, status: "open" });
   }
+  await recordAudit({
+    userId,
+    actorType: "user",
+    actorId: userId,
+    action: "progress.reversed",
+    entityType: "progress_entry",
+    entityId: entryId,
+    metadata: { cycleId, reversalEntryId: reversed.id },
+  });
   return { reversedEntry: reversed, progress };
 }
 

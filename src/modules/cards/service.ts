@@ -7,6 +7,7 @@ import { cycleForFeeDate, cycleRepository, CycleRepository } from "../cycles";
 import { feeEventRepository, FeeEventRepository, reconcileCardEvents } from "../fee-events";
 import { ensureFeeEventReminders, getFeeEventReminderDays, reminderRepository, ReminderRepository, reminderSchedule } from "../reminders";
 import { authRepository, AuthRepository } from "../auth";
+import { recordAudit } from "../../shared/audit";
 
 export function parseCreateCardInput(value: unknown): CreateCardInput {
   const body = assertRecord(value);
@@ -33,6 +34,15 @@ export async function createCard(userId: string, value: unknown, repository: Car
       cycles,
       events,
     });
+    await recordAudit({
+      userId,
+      actorType: "user",
+      actorId: userId,
+      action: "card.created",
+      entityType: "card",
+      entityId: card.id,
+      metadata: { status: card.status },
+    });
     return card;
   }
   const card = await repository.create(userId, input);
@@ -44,6 +54,15 @@ export async function createCard(userId: string, value: unknown, repository: Car
     cards: repository,
     cycles,
     events,
+  });
+  await recordAudit({
+    userId,
+    actorType: "user",
+    actorId: userId,
+    action: "card.created",
+    entityType: "card",
+    entityId: card.id,
+    metadata: { status: card.status },
   });
   return card;
 }
@@ -88,6 +107,15 @@ export async function updateCard(
   const updated = await repository.update(userId, cardId, input);
   if (!updated) throw new AppError("NOT_FOUND", "卡片不存在");
   await syncCardScheduleAfterUpdate(userId, current, input, cycles, events, reminders, auth);
+  await recordAudit({
+    userId,
+    actorType: "user",
+    actorId: userId,
+    action: "card.updated",
+    entityType: "card",
+    entityId: cardId,
+    metadata: { changedFields: Object.keys(patch).filter((field) => field !== "last4") },
+  });
   return updated;
 }
 export async function archiveCard(
@@ -104,6 +132,15 @@ export async function archiveCard(
       .filter((reminder) => reminder.cardId === cardId && (reminder.status === "pending" || reminder.status === "snoozed"))
       .map((reminder) => reminders.save({ ...reminder, status: "cancelled", snoozedUntil: undefined })),
   );
+  await recordAudit({
+    userId,
+    actorType: "user",
+    actorId: userId,
+    action: "card.archived",
+    entityType: "card",
+    entityId: cardId,
+    metadata: { status: "archived" },
+  });
   return card;
 }
 
@@ -158,6 +195,15 @@ export async function restoreCard(
     cycles,
     events,
     reminders,
+  });
+  await recordAudit({
+    userId,
+    actorType: "user",
+    actorId: userId,
+    action: "card.restored",
+    entityType: "card",
+    entityId: cardId,
+    metadata: { status: restored.status },
   });
   return restored;
 }

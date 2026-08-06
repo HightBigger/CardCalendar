@@ -50,10 +50,16 @@ test("MVP main flow on mobile viewport", async ({ page }) => {
   await editForm.locator('label:has-text("次数增量") input').fill("12");
   await editForm.getByRole("button", { name: "保存修改" }).click();
   await expect(page.locator(".cycle-panel").first().locator(".status-pill.success")).toContainText("已达标", { timeout: 20_000 });
+  await expect(page.locator(".dot")).toBeVisible();
+
+  const eventPanel = page.locator(".cycle-panel").first();
+  await eventPanel.locator('label:has-text("处理状态") select').selectOption("waived");
+  await eventPanel.getByRole("button", { name: "保存事件状态" }).click();
+  await expect(page.locator(".cycle-panel").first().locator(".event-history")).toContainText("待确认 → 已免除", { timeout: 20_000 });
 
   await page.getByRole("button", { name: "关闭", exact: true }).click();
   await page.getByRole("button", { name: "提醒", exact: true }).click();
-  await expect(page.locator(".reminder-list")).toContainText("年费提醒");
+  await expect(page.getByText("没有待处理提醒。")).toBeVisible();
 
   await page.getByRole("button", { name: "打开导航" }).click();
   await page.getByRole("button", { name: "年费日历" }).click();

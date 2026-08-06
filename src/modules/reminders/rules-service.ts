@@ -11,6 +11,7 @@ import {
 } from "./rules";
 import { reminderRepository, ReminderRepository } from "./repository";
 import { ensureFeeEventReminders } from "./service";
+import { recordAudit } from "../../shared/audit";
 
 export async function listReminderRules(
   userId: string,
@@ -95,5 +96,14 @@ export async function saveFeeEventReminderRules(
   for (const event of pendingEvents) {
     await ensureFeeEventReminders(userId, event, timezone, [...enabledDays], reminders);
   }
+  await recordAudit({
+    userId,
+    actorType: "user",
+    actorId: userId,
+    action: "reminder_rules.updated",
+    entityType: "user",
+    entityId: userId,
+    metadata: { daysBefore: parsed.map((rule) => rule.daysBefore), enabledDays: [...enabledDays] },
+  });
   return saved;
 }

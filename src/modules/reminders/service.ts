@@ -8,6 +8,7 @@ import {
   reminderRuleRepository,
   ReminderRuleRepository,
 } from "./rules";
+import { recordAudit } from "../../shared/audit";
 
 export type ReminderAction = "complete" | "ignore" | "snooze";
 
@@ -102,10 +103,20 @@ export async function actOnReminder(
     }
   }
 
-  return repository.save({
+  const saved = await repository.save({
     ...current,
     status,
     snoozedUntil,
     completedAt: action === "complete" ? new Date() : current.completedAt,
   });
+  await recordAudit({
+    userId,
+    actorType: "user",
+    actorId: userId,
+    action: "reminder.action",
+    entityType: "reminder",
+    entityId: id,
+    metadata: { action, status },
+  });
+  return saved;
 }

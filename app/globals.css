@@ -1838,6 +1838,34 @@ body {
   font-size: 13px;
 }
 
+.event-history {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #edf0f5;
+}
+
+.event-history-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 1.2fr;
+  align-items: center;
+  gap: 10px;
+  color: #718096;
+  font-size: 12px;
+}
+
+.event-history-row strong {
+  color: #44556a;
+  font-size: 12px;
+}
+
+.event-history-row span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .secondary-button {
   border: 1px solid #d3dce8;
   background: #ffffff;
@@ -1902,6 +1930,12 @@ body {
   .event-row .status-pill {
     grid-column: 2;
     justify-self: start;
+  }
+  .event-history-row {
+    grid-template-columns: 76px 1fr;
+  }
+  .event-history-row span:last-child {
+    grid-column: 2;
   }
   .detail-hero {
     flex-direction: column;
