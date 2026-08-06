@@ -1,5 +1,7 @@
 # CardCalendar 数据库设计（MVP）
 
+本文记录数据模型设计意图；实际可执行 DDL 以 `db/migrations/` 为准，Drizzle 类型以 `db/schema/index.ts` 为准。当前 MVP 迁移包含 9 张业务表；`benefits` 为 P1 预留，尚未创建。
+
 ## 1. 设计目标与约定
 
 - 默认数据库：PostgreSQL 15+；应用连接使用事务和参数化 SQL。
@@ -219,7 +221,6 @@ create table reminder_rules (
   user_id               uuid not null references users(id) on delete cascade,
   card_id               uuid references cards(id) on delete cascade,
   kind                  text not null check (kind in ('fee_event', 'progress')),
-  days_before           integer not null default 0,
   days_before           integer not null check (days_before between 0 and 3650),
   enabled               boolean not null default true,
   created_at            timestamptz not null default now(),

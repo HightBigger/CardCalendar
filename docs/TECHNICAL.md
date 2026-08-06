@@ -1,8 +1,16 @@
 # CardCalendar 技术方案
 
-文档版本：v0.1
+文档版本：v0.2
 适用范围：信用卡年费管理 Web MVP
 对应产品文档：[PRD.md](./PRD.md)
+
+本文同时记录当前 MVP 实现和生产演进方案。凡标记为“生产加固”的内容尚未在当前代码中实现，不应作为现状能力对外承诺。实际交付、运行命令和验收证据以 [MVP-DELIVERY.md](./MVP-DELIVERY.md) 为准。
+
+## 0. 当前实施状态
+
+已实现：Next.js 模块化单体、npm lockfile、React 响应式界面、PostgreSQL/内存双仓储、Drizzle schema、SQL 迁移、pg-boss worker、Argon2 密码哈希、cookie 会话、年费/周期/提醒领域逻辑、审计日志、Vitest、Playwright 和临时 PostgreSQL 验证。
+
+生产加固：平台 HTTPS/CSP/HSTS、Origin/CSRF 防护、分布式限流、Sentry、集中日志、readyz、CI 漏洞扫描、备份恢复演练和 worker 失败告警。
 
 ## 1. 设计目标与约束
 
@@ -24,15 +32,15 @@
 | 决策 | 推荐方案 | 原因 |
 | --- | --- | --- |
 | Web 与服务端 | Next.js App Router + TypeScript | 前后端同仓库，适合小团队，支持 SSR、路由和 API |
-| UI | React + Tailwind CSS + 现有组件库（如 shadcn/ui） | 快速实现响应式和可访问表单 |
+| UI | React + 原生 CSS + lucide-react | 依赖少，当前 MVP 已实现响应式和移动端布局 |
 | 数据库 | PostgreSQL 16（托管） | 事务、日期类型、约束和备份成熟 |
 | ORM/迁移 | Drizzle ORM + SQL migration | 类型安全，SQL 可控，迁移可审查 |
 | 后台任务 | 独立 Node.js worker + pg-boss | 复用 PostgreSQL，不为 MVP 额外维护 Redis |
-| 日期计算 | `Temporal` polyfill 或 `date-fns-tz`，统一封装 | 明确区分 Instant、PlainDate 和用户时区 |
+| 日期计算 | date-fns + date-fns-tz，统一封装 | 明确区分业务日期和用户时区 |
 | 测试 | Vitest + Playwright | 覆盖领域计算和真实浏览器流程 |
 | 部署 | Web、worker、PostgreSQL 分别托管 | 可独立发布；优先选择 Render/Fly.io/Railway 等简单平台 |
 
-Node.js 使用当前 LTS 版本；锁定包管理器（推荐 pnpm）和依赖版本。若部署平台已有可靠 Cron，可由 Cron 触发 worker；否则 worker 常驻消费队列。
+Node.js 要求 20.11+；当前使用 npm 11 和 package-lock.json 锁定依赖。若部署平台已有可靠 Cron，可由 Cron 触发任务；否则 worker 常驻消费 pg-boss 队列。
 
 ## 2. 系统分层与模块边界
 
@@ -80,7 +88,7 @@ Node.js 使用当前 LTS 版本；锁定包管理器（推荐 pnpm）和依赖�
 
 ### 4.1 新增卡片
 
-浏览器提交表单 -> API 校验（Zod）和会话 -> `cards` 事务写入当前年费规则 -> 创建或更新当前 `fee_cycle` -> 为未来 12 个月执行幂等的 `fee_event` upsert -> 写 `audit_log` -> 返回卡片详情。
+浏览器提交表单 -> API 运行时校验和会话 -> `cards` 事务写入当前年费规则 -> 创建或更新当前 `fee_cycle` -> 为未来 12 个月执行幂等的 `fee_event` reconcile -> 写 `audit_log` -> 返回卡片详情。
 
 ### 4.2 更新进度
 
@@ -92,18 +100,25 @@ Node.js 使用当前 LTS 版本；锁定包管理器（推荐 pnpm）和依赖�
 
 ### 4.4 账户导出/删除
 
-用户二次确认 -> 创建一次性导出任务或删除任务 -> 服务端再次校验所有权 -> 以流式 JSON/CSV 导出（不包含密码哈希和会话 token）或事务标记 `deleted_at`、撤销会话并异步清理业务数据 -> 记录审计结果。
+用户二次确认 -> 服务端再次校验所有权 -> 同步返回 JSON 导出（不包含密码哈希和会话 token），或标记删除申请、撤销会话并由 worker 异步清理业务数据 -> 记录审计结果。CSV 和异步对象存储导出属于 P1。
 
 ## 5. 认证与安全
 
-- 注册与登录使用邮箱 + 密码；密码使用 Argon2id（合理的内存/时间参数，参数写入配置并可升级），绝不记录明文或可逆密文。
-- 登录成功后生成高熵随机 session token，浏览器仅保存 `HttpOnly`、`Secure`、`SameSite=Lax` cookie；数据库保存 SHA-256(token) 及过期时间。退出立即撤销当前会话，支持“退出所有设备”。
-- 所有写请求检查 Origin/CSRF token；CORS 默认关闭，仅允许同源。设置 CSP、HSTS、`X-Content-Type-Options`、`Referrer-Policy` 等安全响应头。
-- API 和页面都执行服务端用户所有权校验，不能信任客户端传来的 `user_id`。ID 使用 UUID，错误响应不泄露资源是否存在。
-- 登录、注册、导出和删除接口按 IP + email 限流；连续失败使用指数退避。生产环境可接入平台 WAF/Turnstile，限流存储升级到 Redis 时保持接口不变。
-- 只接受 `last4` 四位数字；日志、埋点、错误上报统一脱敏。禁止把表单原文和数据库连接串写入日志。
-- 数据库连接使用 TLS 和最小权限账号；密钥仅通过部署平台 Secret 注入。每日自动备份，至少保留 7/30 天两档，并定期演练恢复。
-- 依赖启用 lockfile、Dependabot/Renovate 和 CI 漏洞扫描；生产错误页不展示堆栈。
+当前 MVP 已实现：
+
+- 注册与登录使用邮箱和密码；密码使用 Argon2，应用不保存密码明文。
+- 登录后生成 32 字节随机 session token；浏览器 cookie 使用 `HttpOnly`、`SameSite=Lax`，生产环境增加 `Secure`；数据库只保存 SHA-256 token 哈希和过期时间。
+- API 在服务端解析会话并执行用户所有权过滤，不接受客户端指定 `user_id`；资源 ID 使用 UUID。
+- 只接受四位 `last4`；JSON 导出不包含密码哈希或 session token。
+- 生产模式禁用 `x-user-id` 调试入口；账户删除申请会撤销该用户全部会话。
+- 关键写操作记录脱敏审计日志，状态历史可按用户和资源过滤。
+
+公网部署前必须加固：
+
+- 配置 HTTPS、HSTS、CSP、`X-Content-Type-Options`、`Referrer-Policy` 和可信代理。
+- 对写请求增加 Origin/CSRF 校验；对登录、注册、导出和删除增加平台或分布式限流。
+- 数据库使用 TLS 和最小权限账号，Secret 由部署平台注入；启用自动备份和恢复演练。
+- 在 CI 启用依赖漏洞与 Secret 扫描；错误追踪和日志采集必须配置 PII 脱敏。
 
 ## 6. API 规范
 
@@ -126,6 +141,7 @@ API 前缀为 `/api/v1`，JSON UTF-8，使用 cookie 会话。页面内部也统
 | `PATCH` | `/cycles/{cycleId}/progress-entries/{entryId}` | 编辑进度记录 |
 | `POST` | `/cycles/{cycleId}/progress-entries/{entryId}/reverse` | 撤销进度记录 |
 | `POST` | `/fee-events/{eventId}/status` | 更新年费处理状态 |
+| `GET` | `/fee-events/{eventId}/history` | 查询年费事件状态审计历史 |
 | `GET` | `/fee-events?from=&to=&status=` | 日历/列表查询 |
 | `GET` | `/reminders` | 提醒中心 |
 | `GET/PUT` | `/reminders/rules` | 查看/保存全局提醒规则 |
@@ -135,30 +151,30 @@ API 前缀为 `/api/v1`，JSON UTF-8，使用 cookie 会话。页面内部也统
 
 ### 6.2 请求与响应约定
 
-- 成功返回资源或 `{ "data": ..., "meta": ... }`；列表支持 `page`、`page_size`（默认 20，最大 100）和稳定排序。
+- 当前成功响应统一为 `{ "data": ... }`；列表量按个人用户 MVP 规模直接返回。
 - 错误统一为 `{ "error": { "code": "VALIDATION_ERROR", "message": "...", "details": [...], "request_id": "..." } }`。`message` 可展示，`code` 稳定供前端判断。
-- `400` 参数错误，`401` 未登录，`403` 无权限，`404` 资源不存在，`409` 版本/状态冲突，`422` 业务校验失败，`429` 限流，`5xx` 服务错误。
-- 支持 `Idempotency-Key` 的写接口（进度记录、状态更新、导出、删除）；服务端在事务中保存键与响应摘要，重复请求返回同一结果。
-- 使用 `ETag` 或 `updated_at` 做乐观并发控制，编辑过期数据返回 `409`，不静默覆盖。
+- 当前状态码包括 `400` 参数错误、`401` 未登录、`403` 无权限、`404` 资源不存在、`409` 状态冲突、`422` 业务校验失败和 `5xx` 服务错误。
+- 事件和提醒生成通过数据库唯一约束及 repository upsert 保证幂等。
+- 分页、`Idempotency-Key`、ETag/乐观锁和应用级 `429` 限流属于数据量或并发增加后的演进项。
 
 ## 7. 任务与提醒机制
 
 ### 7.1 队列与任务
 
-使用 pg-boss 建立以下队列：`calendar.reconcile`、`reminder.dispatch`、`account.cleanup`、`export.generate`。任务 payload 只包含资源 ID 和版本，不放敏感数据。
+使用 pg-boss 建立 `calendar.reconcile`、`reminder.dispatch`、`account.cleanup` 队列；`export.generate` 仅预留队列名，当前 JSON 导出为同步响应。任务 payload 不放敏感数据。
 
 - `calendar.reconcile`：每天运行一次，并允许手动触发指定用户；生成未来 12 个月事件、补齐新周期。按 `(card_id, event_date)` 幂等。
-- `reminder.dispatch`：每 5 分钟取 `scheduled_for <= now()` 且状态为 `pending` 的提醒，站内展示后由用户完成、忽略或稍后处理。站内提醒不需要外部发送，因此失败主要是数据库错误。
+- `reminder.dispatch`：每 5 分钟扫描活跃用户的待处理事件，按提醒规则幂等补齐提醒实例；前端提醒中心展示待处理和稍后处理记录。
 - `account.cleanup`：账户删除确认后执行，分批删除关联数据，失败可重试；保留最小化合规审计记录。
-- `export.generate`：大数据量时异步生成并上传短期有效对象存储地址；MVP 小数据量可同步流式返回。
+- `export.generate`：P1 大数据量场景再实现异步生成和短期对象存储地址；MVP 同步返回 JSON。
 
-任务要求：最大重试 3 次、指数退避、死信/失败表、每次运行有 `run_id` 和耗时。worker 使用数据库 advisory lock 或 pg-boss singleton，确保同一用户同一任务不并发执行。
+当前依赖 pg-boss 的持久化队列和调度能力。上线前需明确配置最大重试、指数退避、失败告警、run_id、耗时指标和 singleton 并发约束。
 
 ### 7.2 日期和时区规则
 
 - 数据库存储 Instant 使用 UTC；用户设置保存 IANA 时区（如 `Asia/Shanghai`），不保存固定偏移。
 - 年费事件的业务日期是用户时区的 `PlainDate`。提醒时间默认为该日期当地 09:00，再转换成 UTC Instant；若用户设置免打扰，顺延到下一个允许时段。
-- 所有周期边界采用左闭右开 `[start, end)`，避免跨年重复计数。日期库集中在 `shared/time`，禁止业务模块直接调用 `new Date()`。
+- 周期和提醒核心计算集中在 `shared/time` 与领域模块，并通过固定时钟测试覆盖跨时区行为。界面层和应用编排允许使用 `Date` 处理当前时间。
 - 用户修改时区后，只重算未来未触发提醒的 `scheduled_for`，历史记录保持原始 Instant 和展示时区无关。
 
 ## 8. 部署与环境
@@ -178,60 +194,89 @@ API 前缀为 `/api/v1`，JSON UTF-8，使用 cookie 会话。页面内部也统
 
 ### 8.3 配置
 
-必需环境变量：`DATABASE_URL`、`SESSION_SECRET`、`APP_URL`、`CRON_SECRET`、`OBJECT_STORAGE_*`（启用异步导出时）。启动时校验配置并拒绝缺失或弱密钥。
+当前运行配置：
+
+- `USE_DATABASE=true`：生产必须启用 PostgreSQL 仓储。
+- `DATABASE_URL`：数据库模式、迁移和 worker 必填。
+- `DATABASE_POOL_MAX`：可选，默认 10。
+- `AUTH_DEV_HEADER=false`：生产必须关闭。
+- `NODE_ENV=production`：确保 session cookie 带 `Secure`。
+
+`SESSION_SECRET`、`APP_URL` 和 `CRON_SECRET` 当前为平台接入预留；启用签名 cookie、外部 Cron 或公开回调时再接入并执行启动校验。
 
 ## 9. 可观测性与运维
 
-- 使用结构化 JSON 日志，字段包含 `timestamp`、`level`、`request_id`、`user_id`（哈希/内部 ID）、`route`、`status`、`duration_ms`；默认不记录请求体。
-- 接入 Sentry（前端和服务端）或同等错误追踪，设置 PII 脱敏和 source map 权限。
-- 指标至少包括：API 请求数/错误率/p95、登录失败率、任务成功/重试/积压数、待处理提醒数、数据库连接池占用、导出/删除耗时。
-- `/api/healthz` 只检查进程；`/api/readyz` 检查数据库和 worker 心跳，禁止返回敏感配置。
-- 告警阈值：5 分钟 API 5xx > 2%、p95 > 1 秒、任务积压 > 15 分钟、数据库连接耗尽、备份失败。告警链接到 request_id/run_id。
-- 记录年费规则修改、进度撤销、事件状态变更、归档、导出和账户删除等审计事件；普通列表读取不写审计。
+当前已实现：
+
+- `/api/healthz` 进程健康检查。
+- API 错误响应包含 request_id。
+- 年费规则、进度、事件、归档、提醒、导出和账户删除等关键操作写入 `audit_logs`；普通列表读取不写审计。
+
+生产加固：
+
+- 接入结构化 JSON 日志、Sentry 或同等错误追踪，并配置 PII 脱敏。
+- 增加 API 错误率/p95、登录失败率、任务成功/积压、连接池和删除耗时指标。
+- 增加 `/api/readyz` 检查数据库与 worker 心跳。
+- 设置 5xx、延迟、队列积压、连接耗尽和备份失败告警。
 
 ## 10. 测试策略
 
-- **领域单元测试（高覆盖）**：年费日期（闰年、月末）、周期边界、同时满足/满足其一、金额精度、进度百分比上限、提醒时区和免打扰顺延。固定时钟，不依赖系统时区。
-- **应用/集成测试**：使用测试 PostgreSQL 验证事务、所有权过滤、唯一约束、幂等键、归档停止未来事件、账户删除级联和迁移。
-- **API 合约测试**：校验状态码、错误码、分页、字段脱敏和未登录/越权响应；OpenAPI 文档与实现可在 CI 对比。
-- **E2E（Playwright）**：注册 -> 设置时区 -> 新增卡 -> 更新进度 -> 处理年费事件 -> 完成提醒；另测移动端无横向滚动和越权 URL。
-- **任务测试**：重复运行 reconcile 不增加记录；worker 重试后最终一致；跨时区用户在正确本地日期 09:00 看到提醒。
-- **安全与质量门禁**：依赖扫描、Secret 扫描、lint、类型检查、迁移向前兼容检查；生产前手工验证备份恢复和删除流程。
+当前质量门禁：
 
-## 11. 推荐目录结构
+- Vitest 30 项：认证、日期、免年费规则、进度、卡片同步、事件 reconcile、提醒规则/幂等和审计隔离。
+- Playwright 主流程：注册、建卡、进度编辑、达标、事件处理历史、提醒取消、日历双视图和 390px 移动端无横向溢出。
+- `db:verify`：临时 PostgreSQL 全量迁移、9 张表冒烟和审计日志写读。
+- `next build`：生产构建和 Next.js 类型检查。
+
+上线前补充：独立 API 越权合约套件、备份恢复演练、worker 故障重试、依赖/Secret 扫描和跨浏览器 E2E。
+
+## 11. 当前目录结构
 
 ```text
 .
 ├── app/
-│   ├── (auth)/login/page.tsx
-│   ├── (app)/dashboard/page.tsx
-│   ├── (app)/cards/...
-│   └── api/v1/...
+│   ├── api/v1/...
+│   ├── login/page.tsx
+│   └── page.tsx
+├── components/
+│   ├── mvp-app.tsx
+│   ├── dashboard-shell.tsx
+│   └── api.ts
 ├── src/
 │   ├── modules/
-│   │   ├── auth/{domain,application,infrastructure,presentation}/
-│   │   ├── cards/...
-│   │   ├── fee-rules/...
-│   │   ├── cycles/...
-│   │   ├── progress/...
-│   │   ├── fee-events/...
-│   │   └── reminders/...
-│   ├── shared/{db,time,validation,errors,logging}/
-│   └── workers/{index.ts,jobs/}
+│   │   ├── auth/
+│   │   ├── cards/
+│   │   ├── cycles/
+│   │   ├── progress/
+│   │   ├── fee-events/
+│   │   ├── reminders/
+│   │   ├── export/
+│   │   └── account/
+│   ├── shared/{audit,db,time,validation,errors,store}/
+│   └── workers/
 ├── db/
 │   ├── schema/
 │   └── migrations/
-├── tests/{unit,integration,e2e,fixtures}/
-├── scripts/{seed.ts,backup-check.ts}
-├── docs/{PRD.md,TECHNICAL.md}
-├── Dockerfile
+├── e2e/
+├── scripts/{migrate.ts,db-smoke.ts,db-verify.ts}
+├── docs/{PRD.md,TECHNICAL.md,DATABASE.md,MVP-DELIVERY.md}
 ├── docker-compose.yml
 └── package.json
 ```
 
-页面组件不直接访问数据库；API Route Handler 调用模块的 command/query service。查询和写入可分别优化，但不要在 MVP 阶段复制业务模型。
+页面组件不直接访问数据库；API Route Handler 调用模块 service，service 通过 repository 选择内存或 PostgreSQL 实现。当前为同仓库模块化单体，不在 MVP 阶段拆分微服务。
 
 ## 12. 分阶段实施
+
+当前进度：
+
+| 阶段 | 状态 |
+| --- | --- |
+| Phase 0 工程基线 | 已完成 |
+| Phase 1 核心闭环 | 已完成 |
+| Phase 2 进度与站内提醒 | 已完成 |
+| Phase 3 上线准备 | MVP 功能已完成；平台安全、监控、备份和 CI 待生产部署补齐 |
+| Phase 4 P1 | 未开始 |
 
 ### Phase 0：工程基线（1--2 天）
 
