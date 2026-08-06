@@ -6,7 +6,8 @@ test("MVP main flow on mobile viewport", async ({ page }) => {
   const nextFee = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
 
   await page.goto("/login");
-  await page.getByRole("button", { name: "注册" }).click();
+  await expect(page.getByRole("tab", { name: "登录" })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: "注册" }).click();
   await page.locator('label:has-text("称呼") input').fill("E2E 用户");
   await page.locator('label:has-text("邮箱") input').fill(email);
   await page.locator('label:has-text("密码") input').fill("password123");
@@ -19,8 +20,18 @@ test("MVP main flow on mobile viewport", async ({ page }) => {
   );
   expect(overflow).toBeLessThanOrEqual(0);
 
-  await page.getByRole("button", { name: "打开导航" }).click();
+  const mobileNavButton = page.getByRole("button", { name: "打开导航" });
+  await expect(mobileNavButton).toHaveAttribute("aria-expanded", "false");
+  await mobileNavButton.click();
+  await expect(mobileNavButton).toHaveAttribute("aria-expanded", "true");
   await page.getByRole("button", { name: "我的卡片" }).click();
+
+  const addDialog = page.getByRole("dialog", { name: "新增卡片" });
+  await page.getByRole("button", { name: "新增卡片" }).click();
+  await expect(addDialog).toHaveAttribute("aria-modal", "true");
+  await expect(page.locator('label:has-text("发卡银行") input')).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(addDialog).toBeHidden();
   await page.getByRole("button", { name: "新增卡片" }).click();
 
   await page.locator('label:has-text("发卡银行") input').fill("测试银行");
@@ -31,6 +42,11 @@ test("MVP main flow on mobile viewport", async ({ page }) => {
   await page.locator('label:has-text("免年费规则") select').selectOption("count");
   await page.locator('label:has-text("目标次数") input').fill("12");
   await page.getByRole("button", { name: "保存卡片" }).click();
+
+  const toast = page.getByRole("status");
+  await expect(toast).toContainText("卡片已添加，提醒已创建");
+  await toast.getByRole("button", { name: "关闭提示" }).click();
+  await expect(toast).toBeHidden();
 
   const cardRow = page.locator(".card-row").filter({ hasText: "E2E白金卡" });
   await expect(cardRow).toBeVisible();
@@ -75,7 +91,7 @@ test("V1.1 card fields, cumulative progress and reminder timeline", async ({ pag
   const nextFee = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
 
   await page.goto("/login");
-  await page.getByRole("button", { name: "注册" }).click();
+  await page.getByRole("tab", { name: "注册" }).click();
   await page.locator('label:has-text("称呼") input').fill("V1.1 用户");
   await page.locator('label:has-text("邮箱") input').fill(email);
   await page.locator('label:has-text("密码") input').fill("password123");

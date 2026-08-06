@@ -63,6 +63,10 @@ export default function LoginPage() {
         </div>
         <div className="auth-tabs" role="tablist">
           <button
+            id="auth-login-tab"
+            role="tab"
+            aria-selected={mode === "login"}
+            aria-controls="auth-panel"
             className={mode === "login" ? "active" : ""}
             onClick={() => setMode("login")}
             type="button"
@@ -70,6 +74,10 @@ export default function LoginPage() {
             登录
           </button>
           <button
+            id="auth-register-tab"
+            role="tab"
+            aria-selected={mode === "register"}
+            aria-controls="auth-panel"
             className={mode === "register" ? "active" : ""}
             onClick={() => setMode("register")}
             type="button"
@@ -77,7 +85,7 @@ export default function LoginPage() {
             注册
           </button>
         </div>
-        <form onSubmit={submit} className="auth-form">
+        <form id="auth-panel" role="tabpanel" aria-labelledby={mode === "login" ? "auth-login-tab" : "auth-register-tab"} onSubmit={submit} className="auth-form">
           {mode === "register" && (
             <label>
               称呼
@@ -110,7 +118,7 @@ export default function LoginPage() {
             />
           </label>
           {error && <p className="form-error" role="alert">{error}</p>}
-          <button className="primary-button" type="submit" disabled={submitting}>
+          <button className="primary-button" type="submit" disabled={submitting} aria-busy={submitting}>
             {submitting ? "处理中..." : mode === "login" ? "登录" : "注册并进入"}
           </button>
         </form>

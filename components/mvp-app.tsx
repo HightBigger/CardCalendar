@@ -1,9 +1,11 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { addMonths, eachDayOfInterval, endOfMonth, format, startOfMonth } from "date-fns";
 import { apiJson } from "./api";
 import { Icon } from "./icons";
+import { ModalShell } from "./modal";
+import { Toast } from "./toast";
 
 type ApiUser = {
   id: string;
@@ -255,6 +257,19 @@ export function CardCalendarApp() {
   const [detail, setDetail] = useState<CardDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
+  const noticeTimer = useRef<number | null>(null);
+
+  const showNotice = useCallback((message: string) => {
+    setNotice(message);
+    if (noticeTimer.current) window.clearTimeout(noticeTimer.current);
+    noticeTimer.current = window.setTimeout(() => setNotice(""), 3600);
+  }, []);
+
+  const dismissNotice = useCallback(() => {
+    if (noticeTimer.current) window.clearTimeout(noticeTimer.current);
+    noticeTimer.current = null;
+    setNotice("");
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -274,21 +289,31 @@ export function CardCalendarApp() {
       setReminderRules(ruleRes.data);
     } catch (caught) {
       if (caught instanceof Error && caught.message !== "请先登录") {
-        setNotice(caught.message);
+        showNotice(caught.message);
       }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showNotice]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const showNotice = useCallback((message: string) => {
-    setNotice(message);
-    window.setTimeout(() => setNotice(""), 3600);
+  useEffect(() => {
+    return () => {
+      if (noticeTimer.current) window.clearTimeout(noticeTimer.current);
+    };
   }, []);
+
+  useEffect(() => {
+    if (!mobileNav) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileNav(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [mobileNav]);
 
   async function refresh() {
     await load();
@@ -541,7 +566,12 @@ export function CardCalendarApp() {
 
   return (
     <main className="app-frame">
-      <aside className={"sidebar" + (mobileNav ? " sidebar-open" : "")}>
+      <button
+        className={"sidebar-scrim" + (mobileNav ? " visible" : "")}
+        aria-label="关闭导航"
+        onClick={() => setMobileNav(false)}
+      />
+      <aside className={"sidebar" + (mobileNav ? " sidebar-open" : "")} id="app-sidebar">
         <div className="brand">
           <span className="brand-mark"><Icon name="calendar" size={20} /></span>
           <span>卡年历</span>
@@ -552,6 +582,7 @@ export function CardCalendarApp() {
             <button
               key={item.key}
               className={"nav-item" + (view === item.key ? " active" : "")}
+              aria-current={view === item.key ? "page" : undefined}
               onClick={() => {
                 setView(item.key);
                 setMobileNav(false);
@@ -582,7 +613,13 @@ export function CardCalendarApp() {
 
       <section className="main-area">
         <header className="topbar">
-          <button className="mobile-menu" aria-label="打开导航" onClick={() => setMobileNav((open) => !open)}>
+          <button
+            className="mobile-menu"
+            aria-label="打开导航"
+            aria-expanded={mobileNav}
+            aria-controls="app-sidebar"
+            onClick={() => setMobileNav((open) => !open)}
+          >
             <Icon name="menu" />
           </button>
           <div className="topbar-title">{navItems.find((item) => item.key === view)?.label}</div>
@@ -594,7 +631,12 @@ export function CardCalendarApp() {
               onClick={() => setView("reminders")}
             >
               <Icon name="bell" size={19} />
-              {pendingReminders.length > 0 && <span className="dot" />}
+              {pendingReminders.length > 0 && (
+                <>
+                  <span className="dot" aria-hidden="true" />
+                  <span className="sr-only">{pendingReminders.length} 条待处理提醒</span>
+                </>
+              )}
             </button>
             <span className="topbar-date">{new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "short" })}</span>
             <button className="logout-button" onClick={logout}>退出</button>
@@ -602,13 +644,7 @@ export function CardCalendarApp() {
         </header>
 
         <div className="content">
-          {notice && (
-            <div className="toast" role="status">
-              <Icon name="check" size={16} />
-              <span>{notice}</span>
-              <button onClick={() => setNotice("")} aria-label="关闭提示"><Icon name="close" size={15} /></button>
-            </div>
-          )}
+          <Toast message={notice} onDismiss={dismissNotice} />
 
           {view === "overview" && (
             <Overview
@@ -657,41 +693,41 @@ export function CardCalendarApp() {
         </div>
       </section>
 
-      {addOpen && (
-        <CardForm
-          initial={editingCard}
-          onClose={() => {
-            setAddOpen(false);
-            setEditingCard(null);
-          }}
-          onSubmit={saveCard}
-        />
-      )}
+      <CardForm
+        open={addOpen}
+        initial={editingCard}
+        onClose={() => {
+          setAddOpen(false);
+          setEditingCard(null);
+        }}
+        onSubmit={saveCard}
+      />
 
-      {activeCard && (
-            <CardDetailModal
-          detail={detail}
-          loading={detailLoading}
-          events={events}
-          onClose={() => {
-            setActiveCard(null);
-            setDetail(null);
-          }}
-          onEdit={() => {
+      <CardDetailModal
+        open={activeCard !== null}
+        detail={detail}
+        loading={detailLoading}
+        events={events}
+        onClose={() => {
+          setActiveCard(null);
+          setDetail(null);
+        }}
+        onEdit={() => {
+          if (activeCard) {
             setEditingCard(activeCard);
             setAddOpen(true);
-          }}
-          onArchive={() => archiveCard(activeCard)}
-          onRestore={() => restoreCard(activeCard)}
-          onAddProgress={addProgress}
-          onEditProgress={editProgress}
-          onReverseProgress={reverseProgress}
-              onUpdateEvent={updateEventStatus}
-              eventHistory={detail?.eventHistory ?? {}}
-              reminderTimeline={detail?.reminderTimeline ?? {}}
-              onSetProgressValue={setProgressValue}
-            />
-      )}
+          }
+        }}
+        onArchive={() => activeCard && archiveCard(activeCard)}
+        onRestore={() => activeCard && restoreCard(activeCard)}
+        onAddProgress={addProgress}
+        onEditProgress={editProgress}
+        onReverseProgress={reverseProgress}
+        onUpdateEvent={updateEventStatus}
+        eventHistory={detail?.eventHistory ?? {}}
+        reminderTimeline={detail?.reminderTimeline ?? {}}
+        onSetProgressValue={setProgressValue}
+      />
     </main>
   );
 
@@ -973,7 +1009,7 @@ function CardsView(props: {
         {visibleCards.length ? (
           <div className="card-list">
             {visibleCards.map((card, index) => (
-              <div className="card-row" key={card.id}>
+              <div className="card-row card-row-list" key={card.id}>
                 <button className="card-row-main-button" onClick={() => props.onOpenCard(card)}>
                   <span className={"card-color " + ["green", "blue", "coral", "ink"][index % 4]} />
                   <span className="card-row-main">
@@ -1070,7 +1106,13 @@ function CalendarView(props: { events: ApiFeeEvent[]; cards: ApiCard[] }) {
                     <span className="calendar-day-number">{format(day, "d")}</span>
                     <div className="calendar-day-events">
                       {dayEvents.slice(0, 2).map((event) => (
-                        <span className="calendar-event-dot" key={event.id} title={cardLabel(event.cardId, props.cards) + " · " + money(event.expectedAmount)} />
+                        <span
+                          className="calendar-event-dot"
+                          key={event.id}
+                          role="img"
+                          title={cardLabel(event.cardId, props.cards) + " · " + money(event.expectedAmount)}
+                          aria-label={cardLabel(event.cardId, props.cards) + " · " + money(event.expectedAmount)}
+                        />
                       ))}
                       {dayEvents.length > 2 && <small>+{dayEvents.length - 2}</small>}
                     </div>
@@ -1294,8 +1336,8 @@ function SettingsView(props: {
               邮箱（只读）
               <input value={props.profile?.email ?? ""} disabled />
             </label>
-            {error && <p className="form-error">{error}</p>}
-            {saved && <p className="form-success">已保存</p>}
+            {error && <p className="form-error" role="alert">{error}</p>}
+            {saved && <p className="form-success" role="status">已保存</p>}
             <button className="primary-button" type="submit">保存设置</button>
           </form>
         </section>
@@ -1340,8 +1382,8 @@ function SettingsView(props: {
                 添加提醒节点
               </button>
             </div>
-            {ruleError && <p className="form-error full-width">{ruleError}</p>}
-            {ruleSaved && <p className="form-success full-width">已保存</p>}
+            {ruleError && <p className="form-error full-width" role="alert">{ruleError}</p>}
+            {ruleSaved && <p className="form-success full-width" role="status">已保存</p>}
             <button className="primary-button full-width" type="submit">保存提醒规则</button>
           </form>
         </section>
@@ -1404,9 +1446,13 @@ function SettingsView(props: {
           </div>
         </section>
       </div>
-      {deletionAuditOpen && props.profile && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setDeletionAuditOpen(false)}>
-          <section className="modal" role="dialog" aria-modal="true" aria-labelledby="deletion-audit-title">
+      <ModalShell
+        open={deletionAuditOpen && Boolean(props.profile)}
+        onClose={() => setDeletionAuditOpen(false)}
+        labelledBy="deletion-audit-title"
+      >
+        {props.profile && (
+          <>
             <div className="modal-head">
               <div>
                 <p className="section-kicker">DELETION AUDIT</p>
@@ -1436,14 +1482,15 @@ function SettingsView(props: {
                 <dd><pre>{JSON.stringify(props.profile.deletionCleanupResult ?? {}, null, 2)}</pre></dd>
               </div>
             </dl>
-          </section>
-        </div>
-      )}
+          </>
+        )}
+      </ModalShell>
     </>
   );
 }
 
 function CardForm(props: {
+  open: boolean;
   initial: ApiCard | null;
   onClose: () => void;
   onSubmit: (draft: CardDraft) => void;
@@ -1467,6 +1514,29 @@ function CardForm(props: {
   const [progressPeriodStart, setProgressPeriodStart] = useState(props.initial?.progressPeriodStart ?? "");
   const [progressPeriodEnd, setProgressPeriodEnd] = useState(props.initial?.progressPeriodEnd ?? "");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!props.open) return;
+    setName_issuer(props.initial?.issuerName ?? "");
+    setName(props.initial?.name ?? "");
+    setLast4(props.initial?.last4 ?? "");
+    setFee(String(props.initial?.annualFeeAmount ?? ""));
+    setDate(props.initial?.nextFeeDate ?? "");
+    setCycleType(props.initial?.feeCycleType ?? "custom");
+    setOpenedOn(props.initial?.openedOn ?? "");
+    setFeeMonth(String(props.initial?.feeMonth ?? ""));
+    setFeeDay(String(props.initial?.feeDay ?? ""));
+    setRuleType(props.initial?.waiveRuleType as CardDraft["waiveRuleType"] ?? "none");
+    setTargetCount(String(props.initial?.targetCount ?? ""));
+    setTargetAmount(String(props.initial?.targetAmount ?? ""));
+    setCustomRule(props.initial?.customRuleText ?? "");
+    setStatus(props.initial?.status ?? "active");
+    setCurrency(props.initial?.currency ?? "CNY");
+    setNotes(props.initial?.notes ?? "");
+    setProgressPeriodStart(props.initial?.progressPeriodStart ?? "");
+    setProgressPeriodEnd(props.initial?.progressPeriodEnd ?? "");
+    setError("");
+  }, [props.open, props.initial]);
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -1530,8 +1600,7 @@ function CardForm(props: {
   }
 
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && props.onClose()}>
-      <section className="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="card-form-title">
+    <ModalShell open={props.open} onClose={props.onClose} labelledBy="card-form-title" className="modal-wide">
         <div className="modal-head">
           <div>
             <p className="section-kicker">{props.initial ? "EDIT CARD" : "NEW CARD"}</p>
@@ -1593,18 +1662,18 @@ function CardForm(props: {
           {ruleType === "custom" && (
             <label className="full-width">自定义规则<input value={customRule} onChange={(event) => setCustomRule(event.target.value)} placeholder="例如 每年生日月双倍积分" /></label>
           )}
-          {error && <p className="form-error full-width">{error}</p>}
+          {error && <p className="form-error full-width" role="alert">{error}</p>}
           <div className="modal-actions full-width">
             <button className="text-button" type="button" onClick={props.onClose}>取消</button>
             <button className="primary-button" type="submit"><Icon name="check" size={16} />保存卡片</button>
           </div>
         </form>
-      </section>
-    </div>
+    </ModalShell>
   );
 }
 
 function CardDetailModal(props: {
+  open: boolean;
   detail: CardDetail | null;
   loading: boolean;
   events: ApiFeeEvent[];
@@ -1620,10 +1689,8 @@ function CardDetailModal(props: {
   onSetProgressValue: (cycleId: string, entryDate: string, count: number, amount: number, note: string) => void;
   onUpdateEvent: (event: ApiFeeEvent, status: string, actualAmount?: string, occurredOn?: string, notes?: string) => void;
 }) {
-  if (!props.detail && !props.loading) return null;
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && props.onClose()}>
-      <section className="modal modal-detail" role="dialog" aria-modal="true" aria-labelledby="detail-title">
+    <ModalShell open={props.open} onClose={props.onClose} labelledBy="detail-title" className="modal-detail">
         <div className="modal-head">
           <div>
             <p className="section-kicker">CARD DETAIL</p>
@@ -1640,7 +1707,7 @@ function CardDetailModal(props: {
           </div>
         </div>
         {props.loading || !props.detail ? (
-          <p className="loading-inline">正在加载详情...</p>
+          <p className="loading-inline" role="status">正在加载详情...</p>
         ) : (
           <div className="detail-scroll">
             <div className="detail-hero">
@@ -1674,8 +1741,7 @@ function CardDetailModal(props: {
             </div>
           </div>
         )}
-      </section>
-    </div>
+    </ModalShell>
   );
 }
 
