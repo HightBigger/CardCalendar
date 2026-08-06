@@ -11,6 +11,11 @@ type ApiUser = {
   name?: string | null;
   timezone: string;
   status: string;
+  deletedAt?: string | null;
+  deletionRequestedAt?: string | null;
+  deletionCleanupCompletedAt?: string | null;
+  deletionCleanupResult?: Record<string, unknown> | null;
+  deletionRetryCount?: number | null;
 };
 
 type ApiCard = {
@@ -31,6 +36,8 @@ type ApiCard = {
   targetAmount?: number | string | null;
   customRuleText?: string | null;
   notes?: string | null;
+  progressPeriodStart?: string | null;
+  progressPeriodEnd?: string | null;
   createdAt: string;
   updatedAt?: string;
 };
@@ -46,6 +53,8 @@ type CardSummary = ApiCard & {
     percentage: number;
     count: number;
     amount: number;
+    remainingCount?: number;
+    remainingAmount?: number;
   } | null;
 };
 
@@ -86,6 +95,11 @@ type ApiFeeEventHistory = {
   };
 };
 
+type ApiFeeEventTimeline = {
+  history: ApiFeeEventHistory[];
+  reminders: ApiReminder[];
+};
+
 type ApiReminder = {
   id: string;
   cardId?: string | null;
@@ -96,6 +110,7 @@ type ApiReminder = {
   scheduledFor: string;
   status: string;
   snoozedUntil?: string | null;
+  completedAt?: string | null;
 };
 
 type ApiReminderRule = {
@@ -125,6 +140,8 @@ type ProgressData = {
     amount: number;
     percentage: number;
     qualified: boolean;
+    remainingCount?: number;
+    remainingAmount?: number;
   };
 };
 
@@ -133,9 +150,15 @@ type CardDetail = {
   cycles: ApiCycle[];
   progress: Record<string, ProgressData>;
   eventHistory: Record<string, ApiFeeEventHistory[]>;
+  reminderTimeline: Record<string, ApiReminder[]>;
 };
 
 type CardDraft = {
+  status?: "active" | "suspended" | "archived";
+  currency?: string;
+  notes?: string;
+  progressPeriodStart?: string;
+  progressPeriodEnd?: string;
   issuerName: string;
   name: string;
   last4: string;
@@ -240,7 +263,7 @@ export function CardCalendarApp() {
         apiJson<ApiCard[]>("/api/v1/cards?all=true"),
         apiJson<CardSummary[]>("/api/v1/cards/summary?all=true"),
         apiJson<ApiFeeEvent[]>("/api/v1/fee-events"),
-        apiJson<ApiReminder[]>("/api/v1/reminders"),
+        apiJson<ApiReminder[]>("/api/v1/reminders?all=true"),
         apiJson<ApiReminderRule[]>("/api/v1/reminders/rules"),
       ]);
       setProfile(meRes.data);
@@ -350,13 +373,19 @@ export function CardCalendarApp() {
       const cardEvents = events.filter((event) => event.cardId === card.id);
       const historyEntries = await Promise.all(
         cardEvents.map(async (event) => {
-          const historyRes = await apiJson<ApiFeeEventHistory[]>(
+          const timelineRes = await apiJson<ApiFeeEventTimeline>(
             "/api/v1/fee-events/" + event.id + "/history",
           );
-          return [event.id, historyRes.data] as const;
+          return [event.id, timelineRes.data] as const;
         }),
       );
-      setDetail({ card, cycles: cycleRes.data, progress, eventHistory: Object.fromEntries(historyEntries) });
+      setDetail({
+        card,
+        cycles: cycleRes.data,
+        progress,
+        eventHistory: Object.fromEntries(historyEntries.map(([id, timeline]) => [id, timeline.history])),
+        reminderTimeline: Object.fromEntries(historyEntries.map(([id, timeline]) => [id, timeline.reminders])),
+      });
     } catch (caught) {
       showNotice(caught instanceof Error ? caught.message : "卡片详情加载失败");
     } finally {
@@ -374,6 +403,19 @@ export function CardCalendarApp() {
       if (activeCard) await openCard(activeCard);
     } catch (caught) {
       showNotice(caught instanceof Error ? caught.message : "进度更新失败");
+    }
+  }
+
+  async function setProgressValue(cycleId: string, entryDate: string, count: number, amount: number, note: string) {
+    try {
+      await apiJson<ProgressData>("/api/v1/cycles/" + cycleId + "/progress-entries", {
+        method: "POST",
+        body: JSON.stringify({ mode: "cumulative", entryDate, currentCount: count, currentAmount: amount, note }),
+      });
+      showNotice("累计进度已更新");
+      if (activeCard) await openCard(activeCard);
+    } catch (caught) {
+      showNotice(caught instanceof Error ? caught.message : "累计进度更新失败");
     }
   }
 
@@ -472,6 +514,18 @@ export function CardCalendarApp() {
       (card.issuerName + " " + card.name + " " + card.last4).toLowerCase().includes(value),
     );
   }, [cardSummaries, query]);
+  const attentionCards = useMemo(
+    () =>
+      cardSummaries
+        .filter((card) => card.status !== "archived" && card.progress && !card.progress.qualified)
+        .sort((a, b) => {
+          const aRemaining = (a.progress?.remainingCount ?? 0) + (a.progress?.remainingAmount ?? 0);
+          const bRemaining = (b.progress?.remainingCount ?? 0) + (b.progress?.remainingAmount ?? 0);
+          return bRemaining - aRemaining;
+        })
+        .slice(0, 5),
+    [cardSummaries],
+  );
 
   if (loading) {
     return <main className="loading-page"><Icon name="calendar" size={30} /><span>正在加载你的年费日历...</span></main>;
@@ -560,6 +614,9 @@ export function CardCalendarApp() {
             <Overview
               profile={profile}
               cards={activeCards}
+              totalCards={cardSummaries.length}
+              activeCards={activeCards.length}
+              attentionCards={attentionCards}
               events={upcomingEvents}
               reminders={pendingReminders}
               upcomingAmount={upcomingAmount}
@@ -631,6 +688,8 @@ export function CardCalendarApp() {
           onReverseProgress={reverseProgress}
               onUpdateEvent={updateEventStatus}
               eventHistory={detail?.eventHistory ?? {}}
+              reminderTimeline={detail?.reminderTimeline ?? {}}
+              onSetProgressValue={setProgressValue}
             />
       )}
     </main>
@@ -645,11 +704,14 @@ export function CardCalendarApp() {
 function Overview(props: {
   profile: ApiUser | null;
   cards: ApiCard[];
+  totalCards: number;
+  activeCards: number;
+  attentionCards: CardSummary[];
   events: ApiFeeEvent[];
   reminders: ApiReminder[];
   upcomingAmount: number;
   onAdd: () => void;
-  onOpenCard: (card: ApiCard) => void;
+  onOpenCard: (card: ApiCard | CardSummary) => void;
   onGoCards: () => void;
   onGoReminders: () => void;
 }) {
@@ -670,9 +732,14 @@ function Overview(props: {
 
       <section className="metrics" aria-label="概览指标">
         <div className="metric">
+          <span className="metric-label">总卡片</span>
+          <strong>{props.totalCards}</strong>
+          <span className="metric-note"><Icon name="credit" size={14} />全部状态</span>
+        </div>
+        <div className="metric">
           <span className="metric-label">使用中卡片</span>
-          <strong>{props.cards.length}</strong>
-          <span className="metric-note"><Icon name="credit" size={14} />不含已归档</span>
+          <strong>{props.activeCards}</strong>
+          <span className="metric-note"><Icon name="check" size={14} />不含停用/归档</span>
         </div>
         <div className="metric">
           <span className="metric-label">待处理提醒</span>
@@ -709,7 +776,7 @@ function Overview(props: {
                     <span className="card-row-main">
                       <strong>{card.issuerName} · {card.name}</strong>
                       </span>
-                    <span className="card-row-amount">{money(card.annualFeeAmount)}</span>
+                    <span className="card-row-amount">{money(card.annualFeeAmount, card.currency)}</span>
                     <span className="card-row-rule">{ruleText(card)}</span>
                   </button>
                 ))}
@@ -734,7 +801,7 @@ function Overview(props: {
                     <span className="event-date">{fmtDate(event.dueDate)}</span>
                     <span className="event-main">
                       <strong>{cardLabel(event.cardId, props.cards)}</strong>
-                      <small>{money(event.expectedAmount)}</small>
+                      <small>{money(event.expectedAmount, props.cards.find((card) => card.id === event.cardId)?.currency)}</small>
                     </span>
                     <span className="status-pill">{STATUS_LABEL[event.status] || event.status}</span>
                   </div>
@@ -742,6 +809,31 @@ function Overview(props: {
               </div>
             ) : (
               <p className="empty-note">未来 90 天没有年费事件。</p>
+            )}
+          </section>
+          <section className="section-block">
+            <div className="section-heading">
+              <div>
+                <p className="section-kicker">NEEDS ATTENTION</p>
+                <h2>需要关注</h2>
+              </div>
+              <button className="text-button" onClick={props.onGoCards}>查看全部 <Icon name="arrow" size={15} /></button>
+            </div>
+            {props.attentionCards.length ? (
+              <div className="event-list compact">
+                {props.attentionCards.map((card) => (
+                  <button key={card.id} className="event-row attention-row" onClick={() => props.onOpenCard(card)}>
+                    <span className="event-date">{fmtDate(card.nextEvent?.dueDate ?? card.nextFeeDate)}</span>
+                    <span className="event-main">
+                      <strong>{card.issuerName} · {card.name}</strong>
+                      <small>{card.progress ? "剩余 " + (card.progress.remainingCount ?? 0) + " 次 · " + money(card.progress.remainingAmount ?? 0, card.currency) : "未设置进度"}</small>
+                    </span>
+                    <span className="status-pill">{Math.round(card.progress?.percentage ?? 0)}%</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="empty-note">暂无需要关注的免年费进度。</p>
             )}
           </section>
           <section className="section-block">
@@ -801,7 +893,10 @@ function CardsView(props: {
       (!dateTo || !card.nextFeeDate || card.nextFeeDate <= dateTo),
     );
     return filtered.sort((a, b) => {
-      if (sortBy === "progress") return (b.progress?.percentage ?? 0) - (a.progress?.percentage ?? 0);
+      if (sortBy === "remaining_count") return (a.progress?.remainingCount ?? 0) - (b.progress?.remainingCount ?? 0);
+      if (sortBy === "remaining_amount") return (a.progress?.remainingAmount ?? 0) - (b.progress?.remainingAmount ?? 0);
+      if (sortBy === "qualified") return (a.progress?.qualified ? 1 : 0) - (b.progress?.qualified ? 1 : 0);
+      if (sortBy === "name") return (a.issuerName + a.name).localeCompare(b.issuerName + b.name);
       if (sortBy === "created_at") return b.createdAt.localeCompare(a.createdAt);
       return a.nextFeeDate.localeCompare(b.nextFeeDate);
     });
@@ -868,7 +963,10 @@ function CardsView(props: {
             aria-label="排序"
           >
             <option value="due_date">按年费日</option>
-            <option value="progress">按剩余进度</option>
+            <option value="remaining_count">按剩余次数</option>
+            <option value="remaining_amount">按剩余金额</option>
+            <option value="qualified">按达标状态</option>
+            <option value="name">按卡片名称</option>
             <option value="created_at">按创建时间</option>
           </select>
         </div>
@@ -883,7 +981,7 @@ function CardsView(props: {
                     <small>尾号 {card.last4} · 下次年费 {fmtDate(card.nextFeeDate)}{card.nextEvent?.status ? " · " + (STATUS_LABEL[card.nextEvent.status] || card.nextEvent.status) : ""}</small>
                   </span>
                 </button>
-                <span className="card-row-amount">{money(card.annualFeeAmount)}</span>
+                <span className="card-row-amount">{money(card.annualFeeAmount, card.currency)}</span>
                 <span className={"status-pill" + (card.progress?.qualified ? " success" : "")}>{card.progress ? (card.progress.qualified ? "已达标" : Math.round(card.progress.percentage) + "%") : STATUS_LABEL[card.status] || card.status}</span>
                 <button className="icon-button" aria-label="编辑" title="编辑" onClick={() => props.onEdit(card)}>
                   <Icon name="more" size={17} />
@@ -1071,6 +1169,7 @@ function SettingsView(props: {
   const [ruleDraft, setRuleDraft] = useState<ApiReminderRule[]>(props.reminderRules);
   const [ruleError, setRuleError] = useState("");
   const [ruleSaved, setRuleSaved] = useState(false);
+  const [deletionAuditOpen, setDeletionAuditOpen] = useState(false);
 
   useEffect(() => {
     setRuleDraft(props.reminderRules);
@@ -1270,6 +1369,32 @@ function SettingsView(props: {
                 下载 JSON <Icon name="arrow" size={15} />
               </button>
             </div>
+            {props.profile && (props.profile.status !== "active" || props.profile.deletionRequestedAt) && (
+              <div className="deletion-status">
+                <strong>删除申请状态</strong>
+                <dl>
+                  <div>
+                    <dt>状态</dt>
+                    <dd>{STATUS_LABEL[props.profile.status] || props.profile.status}</dd>
+                  </div>
+                  <div>
+                    <dt>申请时间</dt>
+                    <dd>{fmtDate(props.profile.deletionRequestedAt)}</dd>
+                  </div>
+                  <div>
+                    <dt>清理完成时间</dt>
+                    <dd>{fmtDate(props.profile.deletionCleanupCompletedAt)}</dd>
+                  </div>
+                  <div>
+                    <dt>重试次数</dt>
+                    <dd>{props.profile.deletionRetryCount ?? 0}</dd>
+                  </div>
+                </dl>
+                <button className="text-button" type="button" onClick={() => setDeletionAuditOpen(true)}>
+                  查看删除审计 <Icon name="arrow" size={15} />
+                </button>
+              </div>
+            )}
             <div className="danger-zone">
               <strong>删除账户</strong>
               <p>输入 DELETE 后提交删除请求，当前会话会被撤销。</p>
@@ -1279,6 +1404,41 @@ function SettingsView(props: {
           </div>
         </section>
       </div>
+      {deletionAuditOpen && props.profile && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setDeletionAuditOpen(false)}>
+          <section className="modal" role="dialog" aria-modal="true" aria-labelledby="deletion-audit-title">
+            <div className="modal-head">
+              <div>
+                <p className="section-kicker">DELETION AUDIT</p>
+                <h2 id="deletion-audit-title">账户删除审计</h2>
+              </div>
+              <button className="icon-button" onClick={() => setDeletionAuditOpen(false)} aria-label="关闭"><Icon name="close" size={17} /></button>
+            </div>
+            <dl className="audit-detail-list">
+              <div>
+                <dt>账户状态</dt>
+                <dd>{STATUS_LABEL[props.profile.status] || props.profile.status}</dd>
+              </div>
+              <div>
+                <dt>申请时间</dt>
+                <dd>{fmtDate(props.profile.deletionRequestedAt)}</dd>
+              </div>
+              <div>
+                <dt>清理完成时间</dt>
+                <dd>{fmtDate(props.profile.deletionCleanupCompletedAt)}</dd>
+              </div>
+              <div>
+                <dt>重试次数</dt>
+                <dd>{props.profile.deletionRetryCount ?? 0}</dd>
+              </div>
+              <div>
+                <dt>清理结果</dt>
+                <dd><pre>{JSON.stringify(props.profile.deletionCleanupResult ?? {}, null, 2)}</pre></dd>
+              </div>
+            </dl>
+          </section>
+        </div>
+      )}
     </>
   );
 }
@@ -1301,6 +1461,11 @@ function CardForm(props: {
   const [targetCount, setTargetCount] = useState(String(props.initial?.targetCount ?? ""));
   const [targetAmount, setTargetAmount] = useState(String(props.initial?.targetAmount ?? ""));
   const [customRule, setCustomRule] = useState(props.initial?.customRuleText ?? "");
+  const [status, setStatus] = useState<CardDraft["status"]>(props.initial?.status ?? "active");
+  const [currency, setCurrency] = useState(props.initial?.currency ?? "CNY");
+  const [notes, setNotes] = useState(props.initial?.notes ?? "");
+  const [progressPeriodStart, setProgressPeriodStart] = useState(props.initial?.progressPeriodStart ?? "");
+  const [progressPeriodEnd, setProgressPeriodEnd] = useState(props.initial?.progressPeriodEnd ?? "");
   const [error, setError] = useState("");
 
   function submit(event: FormEvent) {
@@ -1333,11 +1498,22 @@ function CardForm(props: {
       setError("自定义规则需要填写说明");
       return;
     }
+    const normalizedCurrency = currency.trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(normalizedCurrency)) {
+      setError("币种需要填写三位 ISO 代码，例如 CNY、USD、HKD");
+      return;
+    }
+    if (progressPeriodStart && progressPeriodEnd && progressPeriodEnd < progressPeriodStart) {
+      setError("进度周期结束日期不能早于开始日期");
+      return;
+    }
     props.onSubmit({
+      status: status ?? "active",
       issuerName: issuerName.trim(),
       name: name.trim(),
       last4,
       annualFeeAmount: Number(fee),
+      currency: normalizedCurrency,
       nextFeeDate: date,
       feeCycleType: cycleType,
       openedOn: cycleType === "anniversary" ? openedOn : undefined,
@@ -1347,6 +1523,9 @@ function CardForm(props: {
       targetCount: ruleType === "count" || ruleType === "count_and_amount" ? count : undefined,
       targetAmount: ruleType === "amount" || ruleType === "count_and_amount" ? amount : undefined,
       customRuleText: ruleType === "custom" ? customRule.trim() : undefined,
+      notes: notes.trim() || undefined,
+      progressPeriodStart: progressPeriodStart || undefined,
+      progressPeriodEnd: progressPeriodEnd || undefined,
     });
   }
 
@@ -1365,6 +1544,18 @@ function CardForm(props: {
           <label>卡片名称<input value={name} onChange={(event) => setName(event.target.value)} placeholder="例如 经典白金卡" /></label>
           <label>卡号后四位<input value={last4} onChange={(event) => setLast4(event.target.value)} placeholder="0000" maxLength={4} inputMode="numeric" /></label>
           <label>年费金额<input type="number" min="0" step="0.01" value={fee} onChange={(event) => setFee(event.target.value)} placeholder="0" /></label>
+          <label>
+            卡片状态
+            <select value={status} onChange={(event) => setStatus(event.target.value as CardDraft["status"])}>
+              <option value="active">使用中</option>
+              <option value="suspended">已停用</option>
+              <option value="archived">已归档</option>
+            </select>
+          </label>
+          <label>币种<input value={currency} onChange={(event) => setCurrency(event.target.value)} maxLength={3} placeholder="CNY" /></label>
+          <label>进度周期开始<input type="date" value={progressPeriodStart} onChange={(event) => setProgressPeriodStart(event.target.value)} /></label>
+          <label>进度周期结束<input type="date" value={progressPeriodEnd} onChange={(event) => setProgressPeriodEnd(event.target.value)} /></label>
+          <label className="full-width">备注<textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} placeholder="可选，例如账单日、权益备注" /></label>
           <label>下次年费日期<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
           <label>
             年费周期
@@ -1418,6 +1609,7 @@ function CardDetailModal(props: {
   loading: boolean;
   events: ApiFeeEvent[];
   eventHistory: Record<string, ApiFeeEventHistory[]>;
+  reminderTimeline: Record<string, ApiReminder[]>;
   onClose: () => void;
   onEdit: () => void;
   onArchive: () => void;
@@ -1425,6 +1617,7 @@ function CardDetailModal(props: {
   onAddProgress: (cycleId: string, entryDate: string, countDelta: number, amountDelta: number, note: string) => void;
   onEditProgress: (cycleId: string, entryId: string, entryDate: string, countDelta: number, amountDelta: number, note: string) => void;
   onReverseProgress: (cycleId: string, entryId: string) => void;
+  onSetProgressValue: (cycleId: string, entryDate: string, count: number, amount: number, note: string) => void;
   onUpdateEvent: (event: ApiFeeEvent, status: string, actualAmount?: string, occurredOn?: string, notes?: string) => void;
 }) {
   if (!props.detail && !props.loading) return null;
@@ -1453,9 +1646,10 @@ function CardDetailModal(props: {
             <div className="detail-hero">
               <div>
                 <strong>{props.detail.card.issuerName} · {props.detail.card.name}</strong>
-                <p>尾号 {props.detail.card.last4} · {ruleText(props.detail.card)}</p>
+                <p>尾号 {props.detail.card.last4} · {STATUS_LABEL[props.detail.card.status] || props.detail.card.status} · {ruleText(props.detail.card)}</p>
+                {props.detail.card.notes && <small className="detail-note">{props.detail.card.notes}</small>}
               </div>
-              <span className="detail-fee">{money(props.detail.card.annualFeeAmount)}</span>
+              <span className="detail-fee">{money(props.detail.card.annualFeeAmount, props.detail.card.currency)}</span>
             </div>
             <div className="detail-grid">
               {props.detail.cycles.map((cycle) => {
@@ -1471,7 +1665,9 @@ function CardDetailModal(props: {
                     onAddProgress={props.onAddProgress}
                     onEditProgress={props.onEditProgress}
                     onReverseProgress={props.onReverseProgress}
+                    onSetProgressValue={props.onSetProgressValue}
                     onUpdateEvent={props.onUpdateEvent}
+                    reminders={event ? props.reminderTimeline[event.id] ?? [] : []}
                   />
                 );
               })}
@@ -1488,12 +1684,15 @@ function CyclePanel(props: {
   progress?: ProgressData;
   event?: ApiFeeEvent;
   eventHistory: ApiFeeEventHistory[];
+  reminders: ApiReminder[];
   onAddProgress: (cycleId: string, entryDate: string, countDelta: number, amountDelta: number, note: string) => void;
   onEditProgress: (cycleId: string, entryId: string, entryDate: string, countDelta: number, amountDelta: number, note: string) => void;
   onReverseProgress: (cycleId: string, entryId: string) => void;
+  onSetProgressValue: (cycleId: string, entryDate: string, count: number, amount: number, note: string) => void;
   onUpdateEvent: (event: ApiFeeEvent, status: string, actualAmount?: string, occurredOn?: string, notes?: string) => void;
 }) {
   const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10));
+  const [inputMode, setInputMode] = useState<"delta" | "cumulative">("delta");
   const [countDelta, setCountDelta] = useState("");
   const [amountDelta, setAmountDelta] = useState("");
   const [note, setNote] = useState("");
@@ -1506,16 +1705,24 @@ function CyclePanel(props: {
   function submitProgress() {
     const count = Number(countDelta) || 0;
     const amount = Number(amountDelta) || 0;
-    if (count <= 0 && amount <= 0) return;
-    if (editingEntryId) {
+    if (inputMode === "cumulative") {
+      if (count === 0 && amount === 0) return;
+      props.onSetProgressValue(props.cycle.id, entryDate, count, amount, note);
+    } else if (editingEntryId) {
       props.onEditProgress(props.cycle.id, editingEntryId, entryDate, count, amount, note);
     } else {
+      if (count <= 0 && amount <= 0) return;
       props.onAddProgress(props.cycle.id, entryDate, count, amount, note);
     }
     setEditingEntryId(null);
     setCountDelta("");
     setAmountDelta("");
     setNote("");
+  }
+
+  function switchInputMode(mode: "delta" | "cumulative") {
+    setInputMode(mode);
+    if (mode === "cumulative") setEditingEntryId(null);
   }
 
   function startEdit(entry: ProgressEntry) {
@@ -1595,11 +1802,27 @@ function CyclePanel(props: {
         </div>
       )}
       <div className="form-grid">
+        <div className="progress-mode-switch full-width">
+          <button
+            type="button"
+            className={inputMode === "delta" ? "active" : ""}
+            onClick={() => switchInputMode("delta")}
+          >
+            追加增量
+          </button>
+          <button
+            type="button"
+            className={inputMode === "cumulative" ? "active" : ""}
+            onClick={() => switchInputMode("cumulative")}
+          >
+            设置累计值
+          </button>
+        </div>
         <label>日期<input type="date" value={entryDate} onChange={(event) => setEntryDate(event.target.value)} /></label>
-        <label>次数增量<input type="number" min="0" step="1" value={countDelta} onChange={(event) => setCountDelta(event.target.value)} placeholder="0" /></label>
-        <label>金额增量<input type="number" min="0" step="0.01" value={amountDelta} onChange={(event) => setAmountDelta(event.target.value)} placeholder="0" /></label>
+        <label>{inputMode === "cumulative" ? "当前次数" : "次数增量"}<input type="number" min="0" step="1" value={countDelta} onChange={(event) => setCountDelta(event.target.value)} placeholder="0" /></label>
+        <label>{inputMode === "cumulative" ? "当前金额" : "金额增量"}<input type="number" min="0" step="0.01" value={amountDelta} onChange={(event) => setAmountDelta(event.target.value)} placeholder="0" /></label>
         <label>备注<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="可选" /></label>
-        <button className="secondary-button" onClick={submitProgress} type="button">{editingEntryId ? "保存修改" : "追加进度"}</button>
+        <button className="secondary-button" onClick={submitProgress} type="button">{inputMode === "cumulative" ? "保存累计值" : editingEntryId ? "保存修改" : "追加进度"}</button>
         {editingEntryId && <button className="text-button" type="button" onClick={cancelEdit}>取消编辑</button>}
       </div>
       {props.event && (
@@ -1644,6 +1867,21 @@ function CyclePanel(props: {
               ))}
             </div>
           )}
+        </div>
+      )}
+      {props.reminders.length > 0 && (
+        <div className="reminder-history">
+          <span className="progress-entry-heading">关联提醒</span>
+          {props.reminders.slice(0, 6).map((reminder) => (
+            <div className="event-history-row" key={reminder.id}>
+              <span>{fmtDate(reminder.scheduledFor)}</span>
+              <strong>{reminder.kind === "fee_event" ? "年费提醒" : "进度提醒"} · 提前 {reminder.daysBefore} 天</strong>
+              <span>
+                {STATUS_LABEL[reminder.status] || reminder.status}
+                {reminder.completedAt ? " · " + fmtDate(reminder.completedAt) : ""}
+              </span>
+            </div>
+          ))}
         </div>
       )}
     </section>

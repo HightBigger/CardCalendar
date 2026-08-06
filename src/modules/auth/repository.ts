@@ -18,6 +18,10 @@ function toUser(row: UserRow): UserRecord {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     deletedAt: row.deletedAt?.toISOString(),
+    deletionRequestedAt: row.deletionRequestedAt?.toISOString(),
+    deletionCleanupCompletedAt: row.deletionCleanupCompletedAt?.toISOString(),
+    deletionCleanupResult: row.deletionCleanupResult,
+    deletionRetryCount: row.deletionRetryCount,
   };
 }
 
@@ -113,7 +117,7 @@ export class InMemoryAuthRepository implements AuthRepository {
 
   async updateUser(
     userId: string,
-    patch: Partial<Pick<UserRecord, "timezone" | "name" | "status" | "deletedAt">>,
+    patch: Partial<Pick<UserRecord, "timezone" | "name" | "status" | "deletedAt" | "deletionRequestedAt" | "deletionCleanupCompletedAt" | "deletionCleanupResult" | "deletionRetryCount">>,
   ) {
     const current = this.users.get(userId);
     if (!current) return undefined;
@@ -243,13 +247,17 @@ class DrizzleAuthRepository implements AuthRepository {
 
   async updateUser(
     userId: string,
-    patch: Partial<Pick<UserRecord, "timezone" | "name" | "status" | "deletedAt">>,
+    patch: Partial<Pick<UserRecord, "timezone" | "name" | "status" | "deletedAt" | "deletionRequestedAt" | "deletionCleanupCompletedAt" | "deletionCleanupResult" | "deletionRetryCount">>,
   ) {
     const values: Partial<typeof users.$inferInsert> = { updatedAt: new Date() };
     if (patch.name !== undefined) values.name = patch.name || null;
     if (patch.timezone !== undefined) values.timezone = patch.timezone;
     if (patch.status !== undefined) values.status = patch.status;
     if (patch.deletedAt !== undefined) values.deletedAt = patch.deletedAt ? new Date(patch.deletedAt) : null;
+    if (patch.deletionRequestedAt !== undefined) values.deletionRequestedAt = patch.deletionRequestedAt ? new Date(patch.deletionRequestedAt) : null;
+    if (patch.deletionCleanupCompletedAt !== undefined) values.deletionCleanupCompletedAt = patch.deletionCleanupCompletedAt ? new Date(patch.deletionCleanupCompletedAt) : null;
+    if (patch.deletionCleanupResult !== undefined) values.deletionCleanupResult = patch.deletionCleanupResult;
+    if (patch.deletionRetryCount !== undefined) values.deletionRetryCount = patch.deletionRetryCount;
     const rows = await this.db
       .update(users)
       .set(values)

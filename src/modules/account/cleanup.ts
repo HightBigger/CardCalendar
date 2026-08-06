@@ -7,25 +7,55 @@ import { recordAudit } from "../../shared/audit";
 
 export async function runAccountCleanup() {
   const users = await authRepository.listDeletionRequestedUsers();
-  const anonymizedUsers: string[] = [];
+  const results: Array<{
+    userId: string;
+    status: "completed" | "failed";
+    retryCount: number;
+    completedAt?: string;
+    error?: string;
+  }> = [];
   for (const user of users) {
-    if (process.env.USE_DATABASE === "true") {
-      await cleanupPostgres(user.id);
-    } else {
-      cleanupMemory(user.id);
+    const retryCount = (user.deletionRetryCount ?? 0) + 1;
+    try {
+      if (process.env.USE_DATABASE === "true") {
+        await cleanupPostgres(user.id);
+      } else {
+        cleanupMemory(user.id);
+      }
+      const now = new Date().toISOString();
+      await authRepository.anonymizeUser(user.id);
+      await authRepository.updateUser(user.id, {
+        deletionCleanupCompletedAt: now,
+        deletionCleanupResult: { completed: true, cleanedAt: now },
+        deletionRetryCount: retryCount,
+      });
+      await recordAudit({
+        userId: user.id,
+        actorType: "system",
+        action: "account.anonymized",
+        entityType: "user",
+        entityId: user.id,
+        metadata: { completedAt: now, retryCount },
+      });
+      results.push({ userId: user.id, status: "completed", retryCount, completedAt: now });
+    } catch (caught) {
+      const error = caught instanceof Error ? caught.message : "unknown cleanup error";
+      await authRepository.updateUser(user.id, {
+        deletionRetryCount: retryCount,
+        deletionCleanupResult: { completed: false, error },
+      });
+      await recordAudit({
+        userId: user.id,
+        actorType: "system",
+        action: "account.cleanup_failed",
+        entityType: "user",
+        entityId: user.id,
+        metadata: { retryCount, error },
+      });
+      results.push({ userId: user.id, status: "failed", retryCount, error });
     }
-    await recordAudit({
-      userId: user.id,
-      actorType: "system",
-      action: "account.anonymized",
-      entityType: "user",
-      entityId: user.id,
-      metadata: {},
-    });
-    await authRepository.anonymizeUser(user.id);
-    anonymizedUsers.push(user.id);
   }
-  return { anonymizedUsers: anonymizedUsers.length };
+  return { anonymizedUsers: results.filter((item) => item.status === "completed").length, results };
 }
 
 async function cleanupPostgres(userId: string) {

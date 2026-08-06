@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { InMemoryCycleRepository } from "../cycles/repository";
 import type { OwnedFeeCycle } from "../cycles/repository";
 import { InMemoryProgressRepository } from "./repository";
-import { editProgressEntry, reverseProgressEntry } from "./service";
+import { editProgressEntry, reverseProgressEntry, setProgressValue } from "./service";
 
 describe("progress service", () => {
   it("reverses a manual entry and rejects reversing the reversal", async () => {
@@ -138,5 +138,46 @@ describe("progress service", () => {
     await expect(
       editProgressEntry("user-1", "cycle-1", reversed.reversedEntry.id, {}, cycles, entries),
     ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("records cumulative value as a correction and reopens qualified cycles", async () => {
+    const cycles = new InMemoryCycleRepository();
+    const entries = new InMemoryProgressRepository();
+    const cycle: OwnedFeeCycle = {
+      id: "cycle-cumulative",
+      userId: "user-cumulative",
+      cardId: "card-cumulative",
+      periodStart: "2026-01-01",
+      periodEnd: "2027-01-01",
+      feeDueDate: "2027-01-01",
+      waiveRuleType: "count",
+      targetCount: 10,
+      status: "open",
+    };
+    await cycles.save(cycle);
+
+    const qualified = await setProgressValue(
+      "user-cumulative",
+      "cycle-cumulative",
+      { mode: "cumulative", entryDate: "2026-08-06", currentCount: 12, note: "直接录入" },
+      cycles,
+      entries,
+    );
+    expect(qualified.progress).toMatchObject({ count: 12, qualified: true });
+    expect(qualified.entry?.entryType).toBe("correction");
+    expect(qualified.entry?.countDelta).toBe(12);
+    expect((await cycles.get("user-cumulative", "cycle-cumulative"))?.status).toBe("qualified");
+
+    const reopened = await setProgressValue(
+      "user-cumulative",
+      "cycle-cumulative",
+      { mode: "cumulative", entryDate: "2026-08-07", currentCount: 5 },
+      cycles,
+      entries,
+    );
+    expect(reopened.progress).toMatchObject({ count: 5, qualified: false });
+    expect(reopened.entry?.entryType).toBe("correction");
+    expect(reopened.entry?.countDelta).toBe(-7);
+    expect((await cycles.get("user-cumulative", "cycle-cumulative"))?.status).toBe("open");
   });
 });

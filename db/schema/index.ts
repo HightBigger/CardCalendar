@@ -40,6 +40,13 @@ export const users = pgTable(
     status: text("status").notNull().default("active"),
     ...timestamps,
     deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
+    deletionRequestedAt: timestamp("deletion_requested_at", { withTimezone: true, mode: "date" }),
+    deletionCleanupCompletedAt: timestamp("deletion_cleanup_completed_at", { withTimezone: true, mode: "date" }),
+    deletionCleanupResult: jsonb("deletion_cleanup_result")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    deletionRetryCount: integer("deletion_retry_count").notNull().default(0),
   },
   (table) => ({
     emailUnique: uniqueIndex("users_email_unique").on(table.email),

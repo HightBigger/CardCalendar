@@ -9,7 +9,11 @@ import { recordAudit } from "../../shared/audit";
 export async function addProgressEntry(userId: string, cycleId: string, value: unknown, cycles: CycleRepository = cycleRepository, entries: ProgressRepository = progressRepository) {
   const cycle = await getCycle(userId, cycleId, cycles);
   if (cycle.status === "closed") throw new AppError("CONFLICT", "已关闭周期不能再更新进度");
-  const body = assertRecord(value); const countDelta = body.countDelta === undefined ? 0 : nonNegativeInteger(body.countDelta, "countDelta"); const amountDelta = body.amountDelta === undefined ? 0 : nonNegativeNumber(body.amountDelta, "amountDelta");
+  const body = assertRecord(value);
+  if (body.mode === "cumulative" || body.currentCount !== undefined || body.currentAmount !== undefined || body.cumulativeCount !== undefined || body.cumulativeAmount !== undefined) {
+    return setProgressValue(userId, cycleId, value, cycles, entries);
+  }
+  const countDelta = body.countDelta === undefined ? 0 : nonNegativeInteger(body.countDelta, "countDelta"); const amountDelta = body.amountDelta === undefined ? 0 : nonNegativeNumber(body.amountDelta, "amountDelta");
   if (countDelta === 0 && amountDelta === 0) throw new AppError("VALIDATION_ERROR", "次数或金额增量至少有一项大于 0");
   const entry = await entries.add({ userId, cardId: cycle.cardId, cycleId, entryDate: assertISODate(body.entryDate, "entryDate"), countDelta, amountDelta, note: optionalString(body.note, "note", 500) });
   const all = await entries.list(userId, cycleId); const valueNow = all.reduce((sum, item) => applyProgressEntry(sum, { count: item.countDelta, amount: item.amountDelta }), { count: 0, amount: 0 });
@@ -25,6 +29,66 @@ export async function addProgressEntry(userId: string, cycleId: string, value: u
     metadata: { cycleId, countDelta, amountDelta },
   });
   return { entry, progress };
+}
+
+export async function setProgressValue(
+  userId: string,
+  cycleId: string,
+  value: unknown,
+  cycles: CycleRepository = cycleRepository,
+  entries: ProgressRepository = progressRepository,
+) {
+  const cycle = await getCycle(userId, cycleId, cycles);
+  if (cycle.status === "closed") throw new AppError("CONFLICT", "已关闭周期不能再更新进度");
+  const body = assertRecord(value);
+  const countRaw = body.currentCount ?? body.cumulativeCount ?? body.count;
+  const amountRaw = body.currentAmount ?? body.cumulativeAmount ?? body.amount;
+  const count = countRaw === undefined ? undefined : nonNegativeInteger(countRaw, "currentCount");
+  const amount = amountRaw === undefined ? undefined : nonNegativeNumber(amountRaw, "currentAmount");
+  if (count === undefined && amount === undefined) {
+    throw new AppError("VALIDATION_ERROR", "currentCount 或 currentAmount 至少提供一项");
+  }
+  const all = await entries.list(userId, cycleId);
+  const current = all.reduce(
+    (sum, item) => applyProgressEntry(sum, { count: item.countDelta, amount: item.amountDelta }),
+    { count: 0, amount: 0 },
+  );
+  const countDelta = count === undefined ? 0 : count - current.count;
+  const amountDelta = amount === undefined ? 0 : Number((amount - current.amount).toFixed(2));
+  const progress = calculateProgress(
+    { type: cycle.waiveRuleType, targetCount: cycle.targetCount, targetAmount: cycle.targetAmount },
+    { count: count ?? current.count, amount: amount ?? current.amount },
+  );
+  if (countDelta === 0 && amountDelta === 0) {
+    return { entry: null, progress, current: { count: count ?? current.count, amount: amount ?? current.amount } };
+  }
+  const entry = await entries.add({
+    userId,
+    cardId: cycle.cardId,
+    cycleId,
+    entryDate: body.entryDate === undefined ? formatISODate(new Date()) : assertISODate(body.entryDate, "entryDate"),
+    countDelta,
+    amountDelta,
+    entryType: "correction",
+    note: body.note === undefined ? "累计值调整" : optionalString(body.note, "note", 500),
+  });
+  const next = applyProgressEntry(current, { count: countDelta, amount: amountDelta });
+  const nextProgress = calculateProgress(
+    { type: cycle.waiveRuleType, targetCount: cycle.targetCount, targetAmount: cycle.targetAmount },
+    next,
+  );
+  if (nextProgress.qualified && cycle.status === "open") await cycles.save({ ...cycle, status: "qualified" });
+  if (!nextProgress.qualified && cycle.status === "qualified") await cycles.save({ ...cycle, status: "open" });
+  await recordAudit({
+    userId,
+    actorType: "user",
+    actorId: userId,
+    action: "progress.value_set",
+    entityType: "progress_entry",
+    entityId: entry.id,
+    metadata: { cycleId, countDelta, amountDelta },
+  });
+  return { entry, progress: nextProgress, current: next };
 }
 
 export async function editProgressEntry(

@@ -1662,6 +1662,82 @@ body {
   cursor: pointer;
 }
 
+.progress-mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.progress-mode-switch button {
+  border: 1px solid #dbe3dc;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #58665d;
+  padding: 9px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.progress-mode-switch button.active {
+  border-color: #94b49a;
+  background: #e6f0e7;
+  color: #1d4ed8;
+}
+
+.deletion-status {
+  border-color: #f0e4c7 !important;
+  background: #fffcf5;
+}
+
+.deletion-status dl,
+.audit-detail-list {
+  display: grid;
+  gap: 10px;
+  margin: 10px 0 0;
+}
+
+.deletion-status dl div,
+.audit-detail-list div {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 10px;
+  color: #58665d;
+  font-size: 13px;
+}
+
+.deletion-status dt,
+.audit-detail-list dt {
+  color: #718096;
+}
+
+.deletion-status dd,
+.audit-detail-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.audit-detail-list pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #334155;
+  font-size: 12px;
+}
+
+.detail-note {
+  display: block;
+  margin-top: 6px;
+  color: #718096;
+}
+
+.reminder-history {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #edf0f5;
+}
+
 .modal-wide {
   max-width: 720px;
 }

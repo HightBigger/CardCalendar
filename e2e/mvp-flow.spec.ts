@@ -68,3 +68,51 @@ test("MVP main flow on mobile viewport", async ({ page }) => {
   await page.getByRole("tab", { name: "列表视图" }).click();
   await expect(page.locator(".calendar-list")).toBeVisible();
 });
+
+test("V1.1 card fields, cumulative progress and reminder timeline", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const email = "v11-" + Date.now() + "@example.com";
+  const nextFee = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+
+  await page.goto("/login");
+  await page.getByRole("button", { name: "注册" }).click();
+  await page.locator('label:has-text("称呼") input').fill("V1.1 用户");
+  await page.locator('label:has-text("邮箱") input').fill(email);
+  await page.locator('label:has-text("密码") input').fill("password123");
+  await page.getByRole("button", { name: "注册并进入" }).click();
+  await page.waitForURL("/");
+
+  await page.getByRole("button", { name: "我的卡片" }).click();
+  await page.getByRole("button", { name: "新增卡片" }).click();
+  await page.locator('label:has-text("发卡银行") input').fill("测试银行");
+  await page.locator('label:has-text("卡片名称") input').fill("V1.1白金卡");
+  await page.locator('label:has-text("卡号后四位") input').fill("5678");
+  await page.locator('label:has-text("年费金额") input').fill("1800");
+  await page.locator('label:has-text("币种") input').fill("USD");
+  await page.locator('label:has-text("进度周期开始") input').fill("2026-01-01");
+  await page.locator('label:has-text("进度周期结束") input').fill("2026-12-31");
+  await page.locator('label:has-text("备注") textarea').fill("V1.1 备注");
+  await page.locator('label:has-text("下次年费日期") input').fill(nextFee);
+  await page.locator('label:has-text("免年费规则") select').selectOption("count");
+  await page.locator('label:has-text("目标次数") input').fill("10");
+  await page.getByRole("button", { name: "保存卡片" }).click();
+
+  const cardRow = page.locator(".card-row").filter({ hasText: "V1.1白金卡" });
+  await expect(cardRow).toBeVisible();
+  await cardRow.locator(".card-row-main-button").click();
+  await expect(page.locator(".detail-note")).toContainText("V1.1 备注", { timeout: 20_000 });
+  await expect(page.locator(".detail-fee")).toContainText("USD");
+
+  const cyclePanel = page.locator(".cycle-panel").first();
+  await expect(cyclePanel).toBeVisible({ timeout: 20_000 });
+  await cyclePanel.getByRole("button", { name: "设置累计值" }).click();
+  const progressForm = cyclePanel.locator(".progress-box + .form-grid");
+  await progressForm.locator('label:has-text("当前次数") input').fill("10");
+  await progressForm.locator('label:has-text("当前金额") input').fill("0");
+  await progressForm.locator('label:has-text("备注") input').fill("V1.1 累计");
+  await progressForm.getByRole("button", { name: "保存累计值" }).click();
+
+  await expect(cyclePanel.locator(".progress-values")).toContainText("10 次", { timeout: 20_000 });
+  await expect(cyclePanel.locator(".status-pill.success")).toContainText("已达标", { timeout: 20_000 });
+  await expect(cyclePanel.locator(".reminder-history")).toContainText("关联提醒", { timeout: 20_000 });
+});

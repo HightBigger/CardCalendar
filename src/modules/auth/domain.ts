@@ -9,6 +9,10 @@ export interface UserProfile {
   createdAt: string;
   updatedAt: string;
   deletedAt?: string;
+  deletionRequestedAt?: string;
+  deletionCleanupCompletedAt?: string;
+  deletionCleanupResult?: Record<string, unknown>;
+  deletionRetryCount?: number;
 }
 
 export interface UserRecord extends UserProfile {
@@ -46,7 +50,7 @@ export interface AuthRepository {
   revokeAllSessions(userId: string): Promise<void>;
   updateUser(
     userId: string,
-    patch: Partial<Pick<UserProfile, "timezone" | "name" | "status" | "deletedAt">>,
+    patch: Partial<Pick<UserProfile, "timezone" | "name" | "status" | "deletedAt" | "deletionRequestedAt" | "deletionCleanupCompletedAt" | "deletionCleanupResult" | "deletionRetryCount">>,
   ): Promise<UserRecord | undefined>;
   anonymizeUser(userId: string): Promise<UserRecord | undefined>;
 }

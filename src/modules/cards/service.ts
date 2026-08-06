@@ -1,7 +1,7 @@
 import { AppError } from "../../shared/errors";
 import { assertISODate } from "../../shared/time";
 import { assertRecord, last4, nonNegativeInteger, nonNegativeNumber, optionalString, requiredString } from "../../shared/validation";
-import { Card, CreateCardInput } from "./domain";
+import { Card, CardStatus, CreateCardInput } from "./domain";
 import { cardRepository, CardRepository } from "./repository";
 import { cycleForFeeDate, cycleRepository, CycleRepository } from "../cycles";
 import { feeEventRepository, FeeEventRepository, reconcileCardEvents } from "../fee-events";
@@ -15,12 +15,19 @@ export function parseCreateCardInput(value: unknown): CreateCardInput {
   if (cycleType !== "anniversary" && cycleType !== "fixed_date" && cycleType !== "custom") throw new AppError("VALIDATION_ERROR", "feeCycleType 无效");
   const waive = body.waiveRuleType ?? "none";
   if (!["none", "count", "amount", "count_and_amount", "custom"].includes(String(waive))) throw new AppError("VALIDATION_ERROR", "waiveRuleType 无效");
-  const input: CreateCardInput = { issuerName: requiredString(body.issuerName, "issuerName", 100), name: requiredString(body.name, "name", 120), last4: last4(body.last4), feeCycleType: cycleType, nextFeeDate: assertISODate(body.nextFeeDate, "nextFeeDate"), annualFeeAmount: body.annualFeeAmount === undefined ? 0 : nonNegativeNumber(body.annualFeeAmount, "annualFeeAmount"), currency: (body.currency === undefined ? "CNY" : requiredString(body.currency, "currency", 3)).toUpperCase(), waiveRuleType: waive as CreateCardInput["waiveRuleType"], openedOn: body.openedOn === undefined ? undefined : assertISODate(body.openedOn, "openedOn"), feeMonth: body.feeMonth === undefined ? undefined : nonNegativeInteger(body.feeMonth, "feeMonth"), feeDay: body.feeDay === undefined ? undefined : nonNegativeInteger(body.feeDay, "feeDay"), targetCount: body.targetCount === undefined ? undefined : nonNegativeInteger(body.targetCount, "targetCount"), targetAmount: body.targetAmount === undefined ? undefined : nonNegativeNumber(body.targetAmount, "targetAmount"), customRuleText: optionalString(body.customRuleText, "customRuleText", 1000), notes: optionalString(body.notes, "notes", 2000) };
+  const input: CreateCardInput = { issuerName: requiredString(body.issuerName, "issuerName", 100), name: requiredString(body.name, "name", 120), last4: last4(body.last4), feeCycleType: cycleType, nextFeeDate: assertISODate(body.nextFeeDate, "nextFeeDate"), annualFeeAmount: body.annualFeeAmount === undefined ? 0 : nonNegativeNumber(body.annualFeeAmount, "annualFeeAmount"), currency: (body.currency === undefined ? "CNY" : requiredString(body.currency, "currency", 3)).toUpperCase(), waiveRuleType: waive as CreateCardInput["waiveRuleType"], openedOn: body.openedOn === undefined ? undefined : assertISODate(body.openedOn, "openedOn"), feeMonth: body.feeMonth === undefined ? undefined : nonNegativeInteger(body.feeMonth, "feeMonth"), feeDay: body.feeDay === undefined ? undefined : nonNegativeInteger(body.feeDay, "feeDay"), targetCount: body.targetCount === undefined ? undefined : nonNegativeInteger(body.targetCount, "targetCount"), targetAmount: body.targetAmount === undefined ? undefined : nonNegativeNumber(body.targetAmount, "targetAmount"), progressPeriodStart: body.progressPeriodStart === undefined ? undefined : assertISODate(body.progressPeriodStart, "progressPeriodStart"), progressPeriodEnd: body.progressPeriodEnd === undefined ? undefined : assertISODate(body.progressPeriodEnd, "progressPeriodEnd"), customRuleText: optionalString(body.customRuleText, "customRuleText", 1000), notes: optionalString(body.notes, "notes", 2000) };
   if (input.waiveRuleType === "count" || input.waiveRuleType === "count_and_amount") if (input.targetCount === undefined) throw new AppError("VALIDATION_ERROR", "次数规则必须提供 targetCount");
   if (input.waiveRuleType === "amount" || input.waiveRuleType === "count_and_amount") if (input.targetAmount === undefined) throw new AppError("VALIDATION_ERROR", "金额规则必须提供 targetAmount");
   if (input.feeCycleType === "anniversary" && !input.openedOn) throw new AppError("VALIDATION_ERROR", "周年规则必须提供 openedOn");
   if (input.feeCycleType === "fixed_date" && (!input.feeMonth || !input.feeDay || input.feeMonth > 12 || input.feeDay > 31)) throw new AppError("VALIDATION_ERROR", "固定日期规则需要有效月份和日期");
+  if (input.progressPeriodStart && input.progressPeriodEnd && input.progressPeriodEnd < input.progressPeriodStart) throw new AppError("VALIDATION_ERROR", "progressPeriodEnd 不能早于 progressPeriodStart");
   return input;
+}
+
+function parseCardStatus(value: unknown): CardStatus | undefined {
+  if (value === undefined) return undefined;
+  if (value === "active" || value === "suspended" || value === "archived") return value;
+  throw new AppError("VALIDATION_ERROR", "卡片状态无效");
 }
 
 export async function createCard(userId: string, value: unknown, repository: CardRepository = cardRepository, cycles: CycleRepository = cycleRepository, events: FeeEventRepository = feeEventRepository): Promise<Card> {
@@ -104,7 +111,8 @@ export async function updateCard(
   const current = await getCard(userId, cardId, repository);
   const patch = assertRecord(value);
   const input = parseCreateCardInput({ ...current, ...patch });
-  const updated = await repository.update(userId, cardId, input);
+  const status = parseCardStatus(patch.status);
+  const updated = await repository.update(userId, cardId, { ...input, ...(status ? { status } : {}) });
   if (!updated) throw new AppError("NOT_FOUND", "卡片不存在");
   await syncCardScheduleAfterUpdate(userId, current, input, cycles, events, reminders, auth);
   await recordAudit({

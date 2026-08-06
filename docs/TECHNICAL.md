@@ -313,3 +313,44 @@ API 前缀为 `/api/v1`，JSON UTF-8，使用 cookie 会话。页面内部也统
 - **金额精度**：数据库和领域层使用 decimal，不用 JavaScript 浮点数直接累计。
 - **隐私边界**：尾号仅用于识别，代码审查和自动化扫描阻止完整卡号字段进入模型、日志或分析平台。
 - **过早扩展**：MVP 采用单体和 Postgres 队列，保留模块边界；只有出现可观测的吞吐或团队协作瓶颈时再拆分。
+
+## 14. V1.1 实施记录
+
+V1.1 已按五包验收范围落地，具体验收见 [V1.1-ACCEPTANCE.md](./V1.1-ACCEPTANCE.md)。
+
+### 14.1 卡片字段与状态
+
+- cards.status 支持 active、suspended、archived，前端提供停用状态和归档操作。
+- 新增 currency、notes、progress_period_start、progress_period_end，金额展示按卡片币种处理。
+- updateCard 复用创建校验，编辑时同步更新周期、事件和未来提醒。
+
+### 14.2 累计进度直接录入
+
+- POST /api/v1/cycles/{cycleId}/progress-entries 接受 mode 为 cumulative 与 currentCount/currentAmount。
+- 服务端计算当前值与目标值的差，写入 entryType 为 correction 的流水。
+- 达标或修正未达标时自动切换 fee_cycles.status 为 qualified/open。
+
+### 14.3 Dashboard 与汇总排序
+
+- 新增 GET /api/v1/dashboard，返回总卡数、使用中/停用/归档卡数、达标卡数、未来事件和 attention 卡片。
+- GET /api/v1/cards/summary 支持 search、status、feeStatus、qualified、日期范围、sortBy 和 sortOrder。
+- 排序字段包括 remaining_count、remaining_amount、qualified、name、created_at、due_date。
+
+### 14.4 年费事件与提醒时间线
+
+- GET /api/v1/fee-events/{eventId}/history 返回事件处理审计历史及关联提醒实例历史。
+- 前端卡片详情在事件区块展示处理历史、关联提醒状态和完成时间。
+
+### 14.5 账户删除可观测性
+
+- users 增加 deletion_requested_at、deletion_cleanup_completed_at、deletion_cleanup_result、deletion_retry_count。
+- GET /api/v1/me/delete-request 返回删除状态；清理任务成功/失败均写审计并更新结果。
+- 设置页展示申请时间、完成时间、重试次数和结果，并提供删除审计弹窗。
+
+### 14.6 验证
+
+单元测试从 MVP 基线扩展至 35 项，新增卡片字段/状态、累计 correction、Dashboard 聚合排序、时间线和账户清理用例。提交前质量门禁与第 10 节保持一致。
+
+### 14.7 角色线程
+
+V1.1 曾按产品、DBA、后端、前端创建四个独立 Codex 线程；因角色 worktree 未统一提交，最终实现直接收敛到 main 工作区，避免引入多份漂移代码。

@@ -128,4 +128,45 @@ describe("card schedule sync", () => {
     expect(cardReminders).toHaveLength(3);
     expect(cardReminders.every((reminder) => reminder.status === "pending")).toBe(true);
   });
+
+  it("updates card status, currency, notes and progress period", async () => {
+    const fixture = await createFixture();
+
+    const updated = await updateCard(
+      fixture.user.id,
+      fixture.card.id,
+      {
+        status: "suspended",
+        currency: "USD",
+        notes: "海外消费卡",
+        progressPeriodStart: "2026-08-01",
+        progressPeriodEnd: "2026-08-31",
+      },
+      fixture.cards,
+      fixture.cycles,
+      fixture.events,
+      fixture.reminders,
+      fixture.auth,
+    );
+
+    expect(updated).toMatchObject({
+      status: "suspended",
+      currency: "USD",
+      notes: "海外消费卡",
+      progressPeriodStart: "2026-08-01",
+      progressPeriodEnd: "2026-08-31",
+    });
+
+    const archived = await updateCard(
+      fixture.user.id,
+      fixture.card.id,
+      { status: "archived" },
+      fixture.cards,
+      fixture.cycles,
+      fixture.events,
+      fixture.reminders,
+      fixture.auth,
+    );
+    expect(archived.status).toBe("archived");
+  });
 });

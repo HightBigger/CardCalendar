@@ -366,3 +366,9 @@ where p.user_id = $1 and p.fee_cycle_id = $2;
 - [ ] 年费/提醒定时任务具备幂等、可重试和归档卡片跳过逻辑。
 - [ ] 进度汇总、周期切换、时区和闰年日期有单元测试。
 - [ ] 完成一次备份恢复演练；验证导出和账户删除不会泄露完整卡号或密码。
+
+## 9. V1.1 数据库变更
+
+- users 增加 deletion_requested_at、deletion_cleanup_completed_at、deletion_cleanup_result、deletion_retry_count；对应迁移 db/migrations/0002_v1_1_account_deletion.sql。
+- cards 增加 currency、notes、progress_period_start、progress_period_end，用于卡片状态和进度周期维护。
+- 账户清理成功后匿名化 users 邮箱和密码哈希，并保留 account.deletion_requested、account.anonymized、account.cleanup_failed 审计记录。

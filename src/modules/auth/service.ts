@@ -151,7 +151,8 @@ export async function requestAccountDeletion(
   if (body.confirmation !== "DELETE") {
     throw new AppError("VALIDATION_ERROR", "请输入 DELETE 确认删除账户");
   }
-  const user = await repository.updateUser(userId, { status: "deletion_requested" });
+  const now = new Date().toISOString();
+  const user = await repository.updateUser(userId, { status: "deletion_requested", deletionRequestedAt: now, deletionRetryCount: 0, deletionCleanupResult: {} });
   if (!user) throw new AppError("NOT_FOUND", "用户不存在");
   await repository.revokeAllSessions(userId);
   await recordAudit({
@@ -163,7 +164,7 @@ export async function requestAccountDeletion(
     entityId: userId,
     metadata: {},
   });
-  return { status: "deletion_requested", requestedAt: new Date().toISOString() };
+  return { status: "deletion_requested", requestedAt: now, retryCount: 0, cleanupResult: {} };
 }
 
 async function createUserSession(userId: string, repository: AuthRepository) {
@@ -178,5 +179,14 @@ async function createUserSession(userId: string, repository: AuthRepository) {
 }
 
 export function toPublicUser(user: Awaited<ReturnType<AuthRepository["findUserByEmail"]>>) {
+  return publicProfile(user);
+}
+
+export async function getAccountDeletionStatus(
+  userId: string,
+  repository: AuthRepository = authRepository,
+) {
+  const user = await repository.findUserById(userId);
+  if (!user) throw new AppError("NOT_FOUND", "用户不存在");
   return publicProfile(user);
 }
