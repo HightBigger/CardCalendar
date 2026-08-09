@@ -4,13 +4,13 @@
 适用范围：信用卡年费管理 Web MVP
 对应产品文档：[PRD.md](./PRD.md)
 
-本文同时记录当前 MVP 实现和生产演进方案。凡标记为“生产加固”的内容尚未在当前代码中实现，不应作为现状能力对外承诺。实际交付、运行命令和验收证据以 [MVP-DELIVERY.md](./MVP-DELIVERY.md) 为准。
+本文同时记录当前 MVP 实现和生产演进方案。凡标记为“平台待落实”的内容不在当前代码中实现，不应作为现状能力对外承诺。实际交付、运行命令和验收证据以 [MVP-DELIVERY.md](./MVP-DELIVERY.md) 为准。
 
 ## 0. 当前实施状态
 
-已实现：Next.js 模块化单体、npm lockfile、React 响应式界面、PostgreSQL/内存双仓储、Drizzle schema、SQL 迁移、pg-boss worker、Argon2 密码哈希、cookie 会话、年费/周期/提醒领域逻辑、审计日志、Vitest、Playwright 和临时 PostgreSQL 验证。
+已实现：Next.js 模块化单体、npm lockfile、React 响应式界面、PostgreSQL/内存双仓储、Drizzle schema、SQL 迁移、pg-boss worker、Argon2 密码哈希、cookie 会话、年费/周期/提醒领域逻辑、审计日志、Origin 校验、单实例限流、安全响应头、worker 心跳、`readyz`、Vitest、Playwright、临时 PostgreSQL 验证和 CI 生产依赖审计。
 
-生产加固：平台 HTTPS/CSP/HSTS、Origin/CSRF 防护、分布式限流、Sentry、集中日志、readyz、CI 漏洞扫描、备份恢复演练和 worker 失败告警。
+平台待落实：TLS 与可信代理、分布式限流、Sentry、集中日志、指标告警、备份恢复演练、Secret 扫描和 worker 失败任务告警。
 
 ## 1. 设计目标与约束
 
@@ -113,10 +113,14 @@ Node.js 要求 20.11+；当前使用 npm 11 和 package-lock.json 锁定依赖�
 - 生产模式禁用 `x-user-id` 调试入口；账户删除申请会撤销该用户全部会话。
 - 关键写操作记录脱敏审计日志，状态历史可按用户和资源过滤。
 
-公网部署前必须加固：
+当前代码已加固：
 
-- 配置 HTTPS、HSTS、CSP、`X-Content-Type-Options`、`Referrer-Policy` 和可信代理。
-- 对写请求增加 Origin/CSRF 校验；对登录、注册、导出和删除增加平台或分布式限流。
+- 生产响应包含 HSTS、CSP、`X-Content-Type-Options`、`Referrer-Policy`；写请求执行 Origin 校验。
+- 登录、注册、导出和删除使用单实例固定窗口限流；只有在可信代理会覆盖转发头时才信任客户端 IP。
+
+公网部署前仍需落实：
+
+- 在入口平台配置 HTTPS、可信代理和分布式限流。
 - 数据库使用 TLS 和最小权限账号，Secret 由部署平台注入；启用自动备份和恢复演练。
 - 在 CI 启用依赖漏洞与 Secret 扫描；错误追踪和日志采集必须配置 PII 脱敏。
 
@@ -201,14 +205,17 @@ API 前缀为 `/api/v1`，JSON UTF-8，使用 cookie 会话。页面内部也统
 - `DATABASE_POOL_MAX`：可选，默认 10。
 - `AUTH_DEV_HEADER=false`：生产必须关闭。
 - `NODE_ENV=production`：确保 session cookie 带 `Secure`。
+- `APP_URL`：生产必须设置为用户访问的公开 HTTPS origin，供 Origin 校验使用。
+- `WORKER_HEARTBEAT_*`：worker 与 `readyz` 使用，间隔必须小于最大时效。
 
-`SESSION_SECRET`、`APP_URL` 和 `CRON_SECRET` 当前为平台接入预留；启用签名 cookie、外部 Cron 或公开回调时再接入并执行启动校验。
+`SESSION_SECRET` 与 `CRON_SECRET` 当前为平台接入预留；启用签名 cookie、外部 Cron 或公开回调时再接入并执行启动校验。
 
 ## 9. 可观测性与运维
 
 当前已实现：
 
 - `/api/healthz` 进程健康检查。
+- `/api/readyz` 数据库与 worker 心跳就绪检查。
 - API 错误响应包含 request_id。
 - 年费规则、进度、事件、归档、提醒、导出和账户删除等关键操作写入 `audit_logs`；普通列表读取不写审计。
 
@@ -216,7 +223,6 @@ API 前缀为 `/api/v1`，JSON UTF-8，使用 cookie 会话。页面内部也统
 
 - 接入结构化 JSON 日志、Sentry 或同等错误追踪，并配置 PII 脱敏。
 - 增加 API 错误率/p95、登录失败率、任务成功/积压、连接池和删除耗时指标。
-- 增加 `/api/readyz` 检查数据库与 worker 心跳。
 - 设置 5xx、延迟、队列积压、连接耗尽和备份失败告警。
 
 ## 10. 测试策略
@@ -225,7 +231,7 @@ API 前缀为 `/api/v1`，JSON UTF-8，使用 cookie 会话。页面内部也统
 
 - Vitest 30 项：认证、日期、免年费规则、进度、卡片同步、事件 reconcile、提醒规则/幂等和审计隔离。
 - Playwright 主流程：注册、建卡、进度编辑、达标、事件处理历史、提醒取消、日历双视图和 390px 移动端无横向溢出。
-- `db:verify`：临时 PostgreSQL 全量迁移、9 张表冒烟和审计日志写读。
+- `db:verify`：临时 PostgreSQL 全量迁移、10 张表冒烟和审计日志写读。
 - `next build`：生产构建和 Next.js 类型检查。
 
 上线前补充：独立 API 越权合约套件、备份恢复演练、worker 故障重试、依赖/Secret 扫描和跨浏览器 E2E。
@@ -275,7 +281,7 @@ API 前缀为 `/api/v1`，JSON UTF-8，使用 cookie 会话。页面内部也统
 | Phase 0 工程基线 | 已完成 |
 | Phase 1 核心闭环 | 已完成 |
 | Phase 2 进度与站内提醒 | 已完成 |
-| Phase 3 上线准备 | MVP 功能已完成；平台安全、监控、备份和 CI 待生产部署补齐 |
+| Phase 3 上线准备 | 代码、容器与 CI 已完成；平台 TLS、监控、备份和告警待部署环境落实 |
 | Phase 4 P1 | 未开始 |
 
 ### Phase 0：工程基线（1--2 天）
@@ -298,7 +304,7 @@ API 前缀为 `/api/v1`，JSON UTF-8，使用 cookie 会话。页面内部也统
 ### Phase 3：上线准备（约 3--5 天）
 
 - 搜索筛选排序、事件状态历史、数据导出和账户删除。
-- HTTPS/安全响应头/限流、Sentry、指标告警、备份恢复演练。
+- 安全响应头、Origin 校验、单实例限流、容器与 CI 已完成；Sentry、指标告警、分布式限流和备份恢复演练由平台落实。
 - staging 验收、迁移演练、生产发布和回滚手册。
 
 ### Phase 4：P1（按反馈排期）

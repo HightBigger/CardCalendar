@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify application and database
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.0
+          cache: npm
+
+      - name: Use repository npm version
+        run: npm install --global npm@11.9.0 --no-audit --no-fund
+
+      - name: Install locked dependencies
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Verify migrations and database persistence
+        run: npm run db:verify
+
+      - name: Build production application
+        run: npm run build
+        env:
+          NODE_ENV: production
+          USE_DATABASE: "true"
+          AUTH_DEV_HEADER: "false"
+          APP_URL: https://build.invalid
+          DATABASE_URL: postgresql://build-only:build-only@127.0.0.1:5432/build-only
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  containers:
+    name: Build ${{ matrix.target }} container
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [web, worker]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build image target
+        run: docker build --target "${{ matrix.target }}" --tag "cardcalendar-${{ matrix.target }}:ci" .

@@ -1,0 +1,106 @@
+name: cardcalendar
+
+x-app-environment: &app-environment
+  NODE_ENV: production
+  DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set in the deployment environment}
+  DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
+  APP_URL: ${APP_URL:?APP_URL must be set to the public HTTPS origin}
+  USE_DATABASE: "true"
+  AUTH_DEV_HEADER: "false"
+  CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-}
+  RATE_LIMIT_TRUST_PROXY: ${RATE_LIMIT_TRUST_PROXY:-false}
+  RATE_LIMIT_LOGIN_MAX: ${RATE_LIMIT_LOGIN_MAX:-10}
+  RATE_LIMIT_LOGIN_WINDOW_SECONDS: ${RATE_LIMIT_LOGIN_WINDOW_SECONDS:-600}
+  RATE_LIMIT_REGISTER_MAX: ${RATE_LIMIT_REGISTER_MAX:-5}
+  RATE_LIMIT_REGISTER_WINDOW_SECONDS: ${RATE_LIMIT_REGISTER_WINDOW_SECONDS:-3600}
+  RATE_LIMIT_EXPORT_MAX: ${RATE_LIMIT_EXPORT_MAX:-3}
+  RATE_LIMIT_EXPORT_WINDOW_SECONDS: ${RATE_LIMIT_EXPORT_WINDOW_SECONDS:-600}
+  RATE_LIMIT_DELETE_MAX: ${RATE_LIMIT_DELETE_MAX:-3}
+  RATE_LIMIT_DELETE_WINDOW_SECONDS: ${RATE_LIMIT_DELETE_WINDOW_SECONDS:-3600}
+  WORKER_HEARTBEAT_NAME: ${WORKER_HEARTBEAT_NAME:-primary}
+  WORKER_HEARTBEAT_INTERVAL_SECONDS: ${WORKER_HEARTBEAT_INTERVAL_SECONDS:-30}
+  WORKER_HEARTBEAT_MAX_AGE_SECONDS: ${WORKER_HEARTBEAT_MAX_AGE_SECONDS:-90}
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cardcalendar}
+      POSTGRES_USER: ${POSTGRES_USER:-cardcalendar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in the deployment environment}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [backend]
+
+  migrate:
+    image: ${WORKER_IMAGE:-cardcalendar-worker:local}
+    build:
+      context: .
+      target: worker
+    environment: *app-environment
+    command: ["npm", "run", "db:migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks: [backend]
+
+  web:
+    image: ${WEB_IMAGE:-cardcalendar-web:local}
+    build:
+      context: .
+      target: web
+    restart: unless-stopped
+    init: true
+    environment: *app-environment
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/readyz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/.next/cache:uid=1000,gid=1000
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    networks: [frontend, backend]
+
+  worker:
+    image: ${WORKER_IMAGE:-cardcalendar-worker:local}
+    build:
+      context: .
+      target: worker
+    restart: unless-stopped
+    init: true
+    environment: *app-environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    networks: [backend]
+
+volumes:
+  postgres-data:
+
+networks:
+  frontend:
+  backend:

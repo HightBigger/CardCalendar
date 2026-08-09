@@ -1,11 +1,14 @@
 import { registerUser } from "../../../../../src/modules/auth";
 import { errorResponse } from "../../../../../src/shared/errors";
 import { sessionCookieValue } from "../../../../../src/modules/auth";
+import { limitSensitiveRequest } from "../../../../../src/shared/security";
 
 const secure = process.env.NODE_ENV === "production";
 
 export async function POST(request: Request): Promise<Response> {
   try {
+    const limited = limitSensitiveRequest(request, "register");
+    if (limited) return limited;
     const result = await registerUser(await request.json());
     return new Response(JSON.stringify({ data: { user: result.user } }), {
       status: 201,

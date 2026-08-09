@@ -1,6 +1,6 @@
 # CardCalendar 数据库设计（MVP）
 
-本文记录数据模型设计意图；实际可执行 DDL 以 `db/migrations/` 为准，Drizzle 类型以 `db/schema/index.ts` 为准。当前 MVP 迁移包含 9 张业务表；`benefits` 为 P1 预留，尚未创建。
+本文记录数据模型设计意图；实际可执行 DDL 以 `db/migrations/` 为准，Drizzle 类型以 `db/schema/index.ts` 为准。当前 MVP 迁移包含 10 张业务表（含 worker 心跳）；`benefits` 为 P1 预留，尚未创建。
 
 ## 1. 设计目标与约定
 

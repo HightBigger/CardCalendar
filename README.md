@@ -33,7 +33,7 @@ npm run db:migrate
 
 迁移文件在 db/migrations/，执行脚本会记录已应用文件并支持重复运行。
 
-无需本地 PostgreSQL 时，可运行 npm run db:verify 自动启动一个临时 PostgreSQL 实例，依次执行迁移和 9 张表的冒烟检查，结束后自动清理。
+无需本地 PostgreSQL 时，可运行 npm run db:verify 自动启动一个临时 PostgreSQL 实例，依次执行迁移和 10 张表的冒烟检查，结束后自动清理。
 
 ## 后台任务
 
@@ -71,3 +71,4 @@ npm run build
 - 技术方案：docs/TECHNICAL.md
 - 数据库设计：docs/DATABASE.md
 - MVP 交付说明：docs/MVP-DELIVERY.md
+- 生产部署与运行：docs/DEPLOYMENT.md

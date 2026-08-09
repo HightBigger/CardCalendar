@@ -404,6 +404,22 @@ export const auditLogs = pgTable(
   }),
 );
 
+export const workerHeartbeats = pgTable(
+  "worker_heartbeats",
+  {
+    name: text("name").primaryKey(),
+    instanceId: uuid("instance_id").notNull(),
+    status: text("status").notNull().default("running"),
+    startedAt: timestamp("started_at", { withTimezone: true, mode: "date" }).notNull(),
+    heartbeatAt: timestamp("heartbeat_at", { withTimezone: true, mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => ({
+    statusCheck: check("worker_heartbeats_status_check", sql`${table.status} in ('running', 'stopped')`),
+    heartbeat: index("worker_heartbeats_heartbeat_idx").on(table.status, table.heartbeatAt),
+  }),
+);
+
 export type User = typeof users.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type Card = typeof cards.$inferSelect;
@@ -413,3 +429,4 @@ export type ProgressEntry = typeof progressEntries.$inferSelect;
 export type ReminderRule = typeof reminderRules.$inferSelect;
 export type Reminder = typeof reminders.$inferSelect;
 export type AuditLog = typeof auditLogs.$inferSelect;
+export type WorkerHeartbeat = typeof workerHeartbeats.$inferSelect;

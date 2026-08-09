@@ -10,6 +10,7 @@ const tables = [
   "reminder_rules",
   "reminders",
   "audit_logs",
+  "worker_heartbeats",
 ];
 
 async function main() {

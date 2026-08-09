@@ -86,7 +86,7 @@ npm run db:verify
 npm run build
 ~~~
 
-db:verify 会启动临时 PostgreSQL，执行全部迁移、检查 9 张业务表，并验证审计日志真实写入和读取，完成后自动清理。
+db:verify 会启动临时 PostgreSQL，执行全部迁移、检查 10 张业务表，并验证审计日志真实写入和读取，完成后自动清理。
 
 ## 6. 部署组成
 
@@ -109,19 +109,20 @@ db:verify 会启动临时 PostgreSQL，执行全部迁移、检查 9 张业务�
 | DATABASE_POOL_MAX | 连接池上限 | 默认 10，按托管数据库容量调整 |
 | AUTH_DEV_HEADER | 本地 x-user-id 调试入口 | 生产必须为 false |
 | NODE_ENV | Next.js 运行环境 | 生产使用 production |
+| APP_URL | 公开 HTTPS 访问 origin | 生产必填；用于写请求 Origin 校验 |
 
-.env.example 中的 SESSION_SECRET、APP_URL、CRON_SECRET 为后续平台接入预留；当前会话使用高熵随机 token 和数据库 token 哈希。
+`APP_URL` 是生产写请求 Origin 校验的必填公开 HTTPS origin。当前会话使用高熵随机 token 和数据库 token 哈希；`SESSION_SECRET` 与 `CRON_SECRET` 仍为后续平台接入预留。
 
 ## 8. 生产部署边界
 
 以下项目不属于当前代码内 MVP 闭环，但在公网正式运营前应由部署平台补齐：
 
-- HTTPS、HSTS、CSP、Origin/CSRF 防护和可信代理配置；
-- 登录/注册/导出/删除接口的分布式限流；
+- TLS 终止、可信代理配置，以及将已实现的 HSTS/CSP/Origin 防护接入公开入口；
+- 登录/注册/导出/删除接口的分布式限流（当前代码提供单实例限流）；
 - Sentry 或同类错误追踪、结构化日志采集、指标和告警；
 - PostgreSQL 自动备份、恢复演练和密钥轮换；
-- CI 质量门禁、依赖漏洞与 Secret 扫描；
-- worker 心跳、失败任务告警和 readyz 数据库就绪检查。
+- Secret 扫描与发布环境的 CI 强制策略；
+- worker 失败任务告警和 readyz 外部监测（当前代码已提供 worker 心跳与数据库就绪检查）。
 
 ## 9. 明确不包含
 
