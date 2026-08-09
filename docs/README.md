@@ -1,6 +1,6 @@
-# CardCalendar 文档
+# Cardfolio 文档
 
-CardCalendar（卡年历）是面向个人用户的信用卡年费、免年费进度和站内提醒 Web 应用。
+Cardfolio（卡片档案）是面向个人用户的信用卡档案、年费、免年费进度和站内提醒 Web 应用。
 
 ## 阅读顺序
 

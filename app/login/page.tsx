@@ -58,8 +58,8 @@ export default function LoginPage() {
           <span className="brand-mark">
             <Icon name="calendar" size={22} />
           </span>
-          <h1>卡年历</h1>
-          <p>信用卡年费与免年费进度管理</p>
+          <h1>卡片档案</h1>
+          <p>管理信用卡信息与重要事项</p>
         </div>
         <div className="auth-tabs" role="tablist">
           <button

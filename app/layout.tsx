@@ -2,8 +2,8 @@ import "./globals.css";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "卡年历 | CardCalendar",
-  description: "信用卡年费与免年费进度管理",
+  title: "卡片档案 | Cardfolio",
+  description: "信用卡信息、年费与重要事项管理",
 };
 
 export default function RootLayout({

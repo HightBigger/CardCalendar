@@ -116,8 +116,8 @@ export function DashboardShell({
           <span className="brand-mark">
             <Icon name="calendar" size={20} />
           </span>
-          <span>卡年历</span>
-          <small>CARD CALENDAR</small>
+          <span>卡片档案</span>
+          <small>CARDFOLIO</small>
         </div>
         <nav className="nav-list" aria-label="主导航">
           {["概览", "我的卡片", "年费日历", "提醒中心"].map((item, i) => (

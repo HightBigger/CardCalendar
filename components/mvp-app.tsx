@@ -612,8 +612,8 @@ export function CardCalendarApp() {
       >
         <div className="brand">
           <span className="brand-mark"><Icon name="calendar" size={20} /></span>
-          <span>卡年历</span>
-          <small>CARD CALENDAR</small>
+          <span>卡片档案</span>
+          <small>CARDFOLIO</small>
           <button
             className="icon-button sidebar-close"
             aria-label="关闭导航"
