@@ -117,7 +117,7 @@ export function DashboardShell({
             <Icon name="calendar" size={20} />
           </span>
           <span>卡片档案</span>
-          <small>CARDFOLIO</small>
+          <small>信用卡管理</small>
         </div>
         <nav className="nav-list" aria-label="主导航">
           {["概览", "我的卡片", "年费日历", "提醒中心"].map((item, i) => (
@@ -233,7 +233,7 @@ export function DashboardShell({
               <section className="section-block">
                 <div className="section-heading">
                   <div>
-                    <p className="section-kicker">YOUR CARDS</p>
+                    <p className="section-kicker">卡片概览</p>
                     <h2>
                       我的卡片 <span>{totalCards}</span>
                     </h2>
@@ -268,7 +268,7 @@ export function DashboardShell({
               <section className="section-block fee-section">
                 <div className="section-heading">
                   <div>
-                    <p className="section-kicker">UPCOMING FEES</p>
+                    <p className="section-kicker">近期年费</p>
                     <h2>近期年费</h2>
                   </div>
                   <button className="text-button">
@@ -302,7 +302,7 @@ export function DashboardShell({
               <section className="side-panel progress-panel">
                 <div className="section-heading">
                   <div>
-                    <p className="section-kicker">PROGRESS</p>
+                    <p className="section-kicker">免年费进度</p>
                     <h2>免年费进度</h2>
                   </div>
                   <button className="more-button" aria-label="更多进度选项">
@@ -316,7 +316,7 @@ export function DashboardShell({
               <section className="side-panel reminder-panel">
                 <div className="section-heading">
                   <div>
-                    <p className="section-kicker">REMINDERS</p>
+                    <p className="section-kicker">提醒</p>
                     <h2>
                       最近提醒 <span>2</span>
                     </h2>
@@ -527,7 +527,7 @@ function AddCardModal({
       >
         <div className="modal-head">
           <div>
-            <p className="section-kicker">NEW CARD</p>
+            <p className="section-kicker">新增卡片</p>
             <h2 id="add-card-title">新增卡片</h2>
           </div>
           <button className="icon-button" onClick={onClose} aria-label="关闭">

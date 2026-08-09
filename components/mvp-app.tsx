@@ -613,7 +613,7 @@ export function CardCalendarApp() {
         <div className="brand">
           <span className="brand-mark"><Icon name="calendar" size={20} /></span>
           <span>卡片档案</span>
-          <small>CARDFOLIO</small>
+          <small>信用卡管理</small>
           <button
             className="icon-button sidebar-close"
             aria-label="关闭导航"
@@ -806,7 +806,7 @@ function Overview(props: {
     <>
       <div className="welcome-row">
         <div>
-          <p className="eyebrow">OVERVIEW</p>
+          <p className="eyebrow">总览</p>
           <h1>{props.profile?.name ? props.profile.name + "，你好" : "欢迎回来"}</h1>
           <p className="subline">未来 90 天年费与免年费进度都在这里。</p>
         </div>
@@ -849,7 +849,7 @@ function Overview(props: {
           <section className="section-block">
             <div className="section-heading">
               <div>
-                <p className="section-kicker">YOUR CARDS</p>
+                <p className="section-kicker">卡片概览</p>
                 <h2>我的卡片 <span>{props.cards.length}</span></h2>
               </div>
               <button className="text-button" onClick={props.onGoCards}>查看全部 <Icon name="arrow" size={15} /></button>
@@ -876,7 +876,7 @@ function Overview(props: {
           <section className="section-block">
             <div className="section-heading">
               <div>
-                <p className="section-kicker">UPCOMING</p>
+                <p className="section-kicker">近期事项</p>
                 <h2>未来 90 天年费</h2>
               </div>
             </div>
@@ -900,7 +900,7 @@ function Overview(props: {
           <section className="section-block">
             <div className="section-heading">
               <div>
-                <p className="section-kicker">NEEDS ATTENTION</p>
+                <p className="section-kicker">待处理事项</p>
                 <h2>需要关注</h2>
               </div>
               <button className="text-button" onClick={props.onGoCards}>查看全部 <Icon name="arrow" size={15} /></button>
@@ -925,7 +925,7 @@ function Overview(props: {
           <section className="section-block">
             <div className="section-heading">
               <div>
-                <p className="section-kicker">REMINDERS</p>
+                <p className="section-kicker">提醒</p>
                 <h2>最近提醒</h2>
               </div>
               <button className="text-button" onClick={props.onGoReminders}>提醒中心 <Icon name="arrow" size={15} /></button>
@@ -991,7 +991,7 @@ function CardsView(props: {
     <>
       <div className="welcome-row">
         <div>
-          <p className="eyebrow">MY CARDS</p>
+          <p className="eyebrow">我的卡片</p>
           <h1>我的卡片</h1>
           <p className="subline">维护每张卡的年费规则与免年费目标。</p>
         </div>
@@ -1110,7 +1110,7 @@ function CalendarView(props: { events: ApiFeeEvent[]; cards: ApiCard[] }) {
     <>
       <div className="welcome-row">
         <div>
-          <p className="eyebrow">FEE CALENDAR</p>
+          <p className="eyebrow">年费日历</p>
           <h1>年费日历</h1>
           <p className="subline">按月视图或列表查看未来年费事件与处理状态。</p>
         </div>
@@ -1218,7 +1218,7 @@ function RemindersView(props: {
     <>
       <div className="welcome-row">
         <div>
-          <p className="eyebrow">REMINDERS</p>
+          <p className="eyebrow">提醒</p>
           <h1>提醒中心</h1>
           <p className="subline">处理年费提醒，避免遗忘关键日期。</p>
         </div>
@@ -1365,7 +1365,7 @@ function SettingsView(props: {
     <>
       <div className="welcome-row">
         <div>
-          <p className="eyebrow">SETTINGS</p>
+          <p className="eyebrow">设置</p>
           <h1>设置</h1>
           <p className="subline">管理个人时区、数据导出与账户。</p>
         </div>
@@ -1374,7 +1374,7 @@ function SettingsView(props: {
         <section className="section-block">
           <div className="section-heading">
             <div>
-              <p className="section-kicker">PROFILE</p>
+              <p className="section-kicker">个人资料</p>
               <h2>个人资料</h2>
             </div>
           </div>
@@ -1406,7 +1406,7 @@ function SettingsView(props: {
         <section className="section-block">
           <div className="section-heading">
             <div>
-              <p className="section-kicker">REMINDERS</p>
+              <p className="section-kicker">提醒</p>
               <h2>提醒规则</h2>
             </div>
           </div>
@@ -1452,7 +1452,7 @@ function SettingsView(props: {
         <section className="section-block">
           <div className="section-heading">
             <div>
-              <p className="section-kicker">DATA</p>
+              <p className="section-kicker">数据管理</p>
               <h2>数据与账户</h2>
             </div>
           </div>
@@ -1516,7 +1516,7 @@ function SettingsView(props: {
           <>
             <div className="modal-head">
               <div>
-                <p className="section-kicker">DELETION AUDIT</p>
+                <p className="section-kicker">删除记录</p>
                 <h2 id="deletion-audit-title">账户删除审计</h2>
               </div>
               <button className="icon-button" onClick={() => setDeletionAuditOpen(false)} aria-label="关闭"><Icon name="close" size={17} /></button>
@@ -1664,7 +1664,7 @@ function CardForm(props: {
     <ModalShell open={props.open} onClose={props.onClose} labelledBy="card-form-title" className="modal-wide">
         <div className="modal-head">
           <div>
-            <p className="section-kicker">{props.initial ? "EDIT CARD" : "NEW CARD"}</p>
+            <p className="section-kicker">{props.initial ? "编辑卡片" : "新增卡片"}</p>
             <h2 id="card-form-title">{props.initial ? "编辑卡片" : "新增卡片"}</h2>
           </div>
           <button className="icon-button" onClick={props.onClose} aria-label="关闭"><Icon name="close" size={17} /></button>
@@ -1754,7 +1754,7 @@ function CardDetailModal(props: {
     <ModalShell open={props.open} onClose={props.onClose} labelledBy="detail-title" className="modal-detail">
         <div className="modal-head">
           <div>
-            <p className="section-kicker">CARD DETAIL</p>
+            <p className="section-kicker">卡片详情</p>
             <h2 id="detail-title">{props.detail?.card.name ?? "卡片详情"}</h2>
           </div>
           <div className="modal-actions">
