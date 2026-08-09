@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "./icons";
 
-const TOAST_CLOSE_MS = 240;
+const TOAST_CLOSE_MS = 200;
 
 type ToastProps = {
   message: string | null;
@@ -13,9 +13,11 @@ type ToastProps = {
 export function Toast({ message, onDismiss }: ToastProps) {
   const [present, setPresent] = useState(Boolean(message));
   const [closing, setClosing] = useState(false);
+  const [displayMessage, setDisplayMessage] = useState(message ?? "");
 
   useEffect(() => {
     if (message) {
+      setDisplayMessage(message);
       setPresent(true);
       setClosing(false);
       return;
@@ -23,10 +25,15 @@ export function Toast({ message, onDismiss }: ToastProps) {
 
     if (!present) return;
     setClosing(true);
+    const closeDelay = window.matchMedia("(prefers-reduced-motion: reduce)")
+      .matches
+      ? 0
+      : TOAST_CLOSE_MS;
     const timer = window.setTimeout(() => {
       setPresent(false);
       setClosing(false);
-    }, TOAST_CLOSE_MS);
+      setDisplayMessage("");
+    }, closeDelay);
     return () => window.clearTimeout(timer);
   }, [message, present]);
 
@@ -41,7 +48,7 @@ export function Toast({ message, onDismiss }: ToastProps) {
       aria-atomic="true"
     >
       <Icon name="check" size={16} />
-      <span>{message}</span>
+      <span>{displayMessage}</span>
       <button onClick={onDismiss} aria-label="关闭提示">
         <Icon name="close" size={15} />
       </button>

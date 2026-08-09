@@ -2,7 +2,10 @@
 
 import { ReactNode, useEffect, useRef, useState } from "react";
 
-const MODAL_CLOSE_MS = 240;
+const MODAL_CLOSE_MS = 220;
+
+const FOCUSABLE_SELECTOR =
+  'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 type ModalShellProps = {
   open: boolean;
@@ -38,10 +41,12 @@ export function ModalShell({
         window.clearTimeout(closeTimer.current);
         closeTimer.current = null;
       }
-      previousFocus.current =
-        document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null;
+      if (!previousFocus.current) {
+        previousFocus.current =
+          document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
+      }
       setPresent(true);
       setClosing(false);
       return;
@@ -49,13 +54,17 @@ export function ModalShell({
 
     if (!present) return;
     setClosing(true);
+    const closeDelay = window.matchMedia("(prefers-reduced-motion: reduce)")
+      .matches
+      ? 0
+      : MODAL_CLOSE_MS;
     closeTimer.current = window.setTimeout(() => {
       setPresent(false);
       setClosing(false);
-      previousFocus.current?.focus();
+      previousFocus.current?.focus({ preventScroll: true });
       previousFocus.current = null;
       closeTimer.current = null;
-    }, MODAL_CLOSE_MS);
+    }, closeDelay);
 
     return () => {
       if (closeTimer.current) {
@@ -88,15 +97,13 @@ export function ModalShell({
     if (!dialog) return;
     const dialogElement = dialog;
 
-    const focusables = Array.from(
-      dialog.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      ),
-    ).filter(
-      (element) =>
-        !element.hasAttribute("disabled") &&
-        element.getAttribute("aria-hidden") !== "true",
-    );
+    const getFocusables = () =>
+      Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+        (element) =>
+          !element.hasAttribute("disabled") &&
+          element.getAttribute("aria-hidden") !== "true",
+      );
+    const focusables = getFocusables();
     const firstControl =
       dialog.querySelector<HTMLElement>("input, select, textarea");
     (firstControl ?? focusables[0] ?? dialog).focus();
@@ -114,15 +121,25 @@ export function ModalShell({
 
       if (
         event.key !== "Tab" ||
-        focusables.length < 2 ||
         !(event.target instanceof Node) ||
         !dialogElement.contains(event.target)
       ) {
         return;
       }
 
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
+      const currentFocusables = getFocusables();
+      if (currentFocusables.length === 0) {
+        event.preventDefault();
+        dialogElement.focus();
+        return;
+      }
+      const first = currentFocusables[0];
+      const last = currentFocusables[currentFocusables.length - 1];
+      if (currentFocusables.length === 1) {
+        event.preventDefault();
+        first.focus();
+        return;
+      }
       if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last.focus();
@@ -145,7 +162,7 @@ export function ModalShell({
       className={"modal-backdrop" + (closing ? " closing" : "")}
       data-state={state}
       role="presentation"
-      onMouseDown={(event) =>
+      onPointerDown={(event) =>
         event.target === event.currentTarget && onCloseRef.current()
       }
     >
@@ -153,6 +170,7 @@ export function ModalShell({
         className={"modal" + (className ? " " + className : "")}
         data-state={state}
         ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}

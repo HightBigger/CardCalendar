@@ -2349,3 +2349,815 @@ button.card-row,
     opacity: 1 !important;
   }
 }
+
+/* Apple-style visual system: semantic, compact, and operational. */
+:root {
+  color-scheme: light;
+  --canvas: #f5f5f7;
+  --surface: #ffffff;
+  --surface-subtle: #f9f9fb;
+  --surface-hover: #f0f0f2;
+  --material: rgba(248, 248, 250, 0.82);
+  --material-solid: #f8f8fa;
+  --separator: rgba(60, 60, 67, 0.16);
+  --separator-strong: rgba(60, 60, 67, 0.28);
+  --text: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --text-tertiary: #8e8e93;
+  --primary: #007aff;
+  --primary-hover: #006ee6;
+  --primary-soft: #e8f2ff;
+  --success: #248a3d;
+  --success-soft: #eaf7ed;
+  --warning: #b25000;
+  --warning-soft: #fff4e5;
+  --danger: #d70015;
+  --danger-soft: #fff0f1;
+  --info: #087ea4;
+  --info-soft: #e8f7fb;
+  --focus-ring: rgba(0, 122, 255, 0.38);
+  --shadow-control: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --shadow-overlay: 0 18px 54px rgba(0, 0, 0, 0.2);
+
+  --ink: var(--text);
+  --muted: var(--text-secondary);
+  --line: var(--separator);
+  --soft: var(--surface-subtle);
+  --paper: var(--canvas);
+  --green: var(--primary);
+  --green-dark: var(--text);
+  --green-soft: var(--primary-soft);
+  --amber: var(--warning);
+  --amber-soft: var(--warning-soft);
+  --coral: var(--danger);
+  --coral-soft: var(--danger-soft);
+  --blue: var(--info);
+  --blue-soft: var(--info-soft);
+}
+
+html,
+body {
+  background: var(--canvas);
+  color: var(--text);
+}
+
+body {
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Text",
+    "Segoe UI",
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Microsoft YaHei",
+    sans-serif;
+  font-optical-sizing: auto;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition:
+    transform 120ms var(--ease-out),
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease,
+    opacity 180ms ease;
+}
+
+input,
+select,
+textarea {
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    color 180ms ease;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.app-frame {
+  background: var(--canvas);
+}
+
+.sidebar {
+  background: var(--material-solid);
+  border-right-color: var(--separator);
+  padding: 24px 14px 18px;
+}
+
+@supports ((-webkit-backdrop-filter: blur(20px)) or (backdrop-filter: blur(20px))) {
+  .sidebar {
+    background: var(--material);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    backdrop-filter: blur(20px) saturate(150%);
+  }
+}
+
+.brand {
+  color: var(--text);
+  margin-bottom: 42px;
+  font-size: 18px;
+  font-weight: 720;
+}
+
+.brand small,
+.user-chip small {
+  color: var(--text-tertiary);
+}
+
+.brand-mark {
+  background: var(--primary);
+  box-shadow: 0 2px 5px rgba(0, 122, 255, 0.2);
+}
+
+.nav-list {
+  gap: 3px;
+}
+
+.nav-item {
+  min-height: 40px;
+  color: var(--text-secondary);
+  border-radius: 7px;
+}
+
+.nav-item.active {
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: 680;
+}
+
+.nav-count {
+  background: var(--warning);
+  border-radius: 10px;
+}
+
+.user-chip {
+  border-top-color: var(--separator);
+  color: var(--text-secondary);
+}
+
+.avatar {
+  background: var(--info);
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  height: 64px;
+  background: var(--material-solid);
+  border-bottom-color: var(--separator);
+}
+
+@supports ((-webkit-backdrop-filter: blur(20px)) or (backdrop-filter: blur(20px))) {
+  .topbar {
+    background: var(--material);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    backdrop-filter: blur(20px) saturate(150%);
+  }
+}
+
+.topbar-title {
+  color: var(--text-secondary);
+  font-weight: 650;
+}
+
+.topbar-actions {
+  color: var(--text-tertiary);
+}
+
+.icon-button {
+  min-width: 32px;
+  min-height: 32px;
+  color: var(--text-secondary);
+}
+
+.sidebar-close {
+  display: none;
+  margin-left: auto;
+}
+
+.dot {
+  background: var(--danger);
+  border-color: var(--material-solid);
+}
+
+.content {
+  max-width: 1320px;
+  padding-top: 36px;
+}
+
+.eyebrow,
+.section-kicker {
+  color: var(--text-tertiary);
+}
+
+h1 {
+  color: var(--text);
+  font-size: 30px;
+  font-weight: 720;
+}
+
+h2,
+.card-title strong,
+.event-main strong,
+.reminder-card-head strong,
+.data-actions strong,
+.detail-hero strong {
+  color: var(--text);
+}
+
+h2 span,
+.subline,
+.metric-label,
+.metric-note,
+.card-meta,
+.fee-info span,
+.reminder-row p,
+.reminder-row small,
+.event-main small,
+.reminder-card-head small,
+.data-actions p,
+.detail-hero p,
+.cycle-head p,
+.progress-values,
+.detail-note,
+.empty-note,
+.loading-page,
+.loading-inline {
+  color: var(--text-secondary);
+}
+
+.primary-button,
+.secondary-button,
+.danger-button,
+.logout-button {
+  min-height: 36px;
+  border-radius: 7px;
+  box-shadow: none;
+}
+
+.primary-button {
+  background: var(--primary);
+  color: #fff;
+}
+
+.secondary-button,
+.logout-button {
+  background: var(--surface);
+  border-color: var(--separator-strong);
+  color: var(--primary);
+}
+
+.danger-button {
+  background: var(--danger);
+}
+
+.metrics {
+  background: var(--surface);
+  border-color: var(--separator);
+  box-shadow: var(--shadow-control);
+}
+
+.metric {
+  border-right-color: var(--separator);
+}
+
+.metric.accent {
+  background: var(--primary-soft);
+}
+
+.metric strong,
+.card-fee strong,
+.fee-amount,
+.detail-fee {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-note svg,
+.metric-note.success,
+.metric-note.success svg,
+.progress-copy b,
+.progress-copy .done {
+  color: var(--success);
+}
+
+.metric-note.warning,
+.metric-note.warning svg {
+  color: var(--warning);
+}
+
+.section-block,
+.side-panel {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+}
+
+.section-block + .section-block,
+.side-panel + .side-panel {
+  padding-top: 28px;
+  border-top: 1px solid var(--separator);
+}
+
+.text-button {
+  min-height: 32px;
+  color: var(--primary);
+}
+
+.more-button,
+.row-arrow {
+  color: var(--text-tertiary);
+}
+
+.search-field,
+.filter-button,
+select.filter-button,
+.modal input,
+.modal select,
+.modal textarea,
+.auth-form input,
+.form-grid input,
+.form-grid select,
+.danger-zone input {
+  background: var(--surface);
+  border-color: var(--separator-strong);
+  color: var(--text);
+  border-radius: 7px;
+  box-shadow: none;
+}
+
+.search-field {
+  min-height: 38px;
+  background: var(--surface-subtle);
+}
+
+.search-field:focus-within {
+  border-color: var(--primary);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+.search-field input {
+  color: var(--text);
+}
+
+.filter-button,
+select.filter-button {
+  min-height: 38px;
+  color: var(--text-secondary);
+}
+
+.card-row,
+.fee-row,
+.progress-item,
+.reminder-row,
+.event-handler,
+.event-history,
+.progress-entry-list,
+.reminder-history {
+  border-color: var(--separator);
+}
+
+.card-row {
+  padding-block: 16px;
+}
+
+.card-emblem.ink {
+  background: #303033;
+  color: #f2f2f7;
+}
+
+.card-emblem.blue {
+  background: var(--info);
+  color: var(--info-soft);
+}
+
+.card-emblem.coral {
+  background: var(--danger);
+  color: var(--danger-soft);
+}
+
+.card-emblem.green {
+  background: var(--success);
+  color: var(--success-soft);
+}
+
+.status-pill,
+.overdue-pill {
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  border-radius: 999px;
+}
+
+.status-pill.success {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.overdue-pill,
+.danger-text {
+  color: var(--danger) !important;
+}
+
+.progress-line,
+.progress-track {
+  background: rgba(60, 60, 67, 0.12);
+}
+
+.progress-line span,
+.progress-track span {
+  background: var(--primary);
+}
+
+.progress-track span.complete {
+  background: var(--success);
+}
+
+.date-tile.amber {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.date-tile.blue {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+.date-tile.coral,
+.overdue-note {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.progress-panel {
+  background: var(--primary-soft);
+  border: 1px solid rgba(0, 122, 255, 0.16);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.progress-item {
+  border-top-color: rgba(0, 122, 255, 0.16);
+}
+
+.progress-item-head > span:last-child,
+.mini-dot.green {
+  color: var(--primary);
+}
+
+.mini-dot.ink {
+  background: var(--text);
+}
+
+.mini-dot.blue {
+  background: var(--info);
+}
+
+.mini-dot.coral {
+  background: var(--danger);
+}
+
+.mini-dot.green {
+  background: var(--primary);
+}
+
+.reminder-icon {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.reminder-icon.urgent,
+.overdue-note,
+.reminder-row.overdue,
+.reminder-card.overdue {
+  border-color: rgba(215, 0, 21, 0.2);
+}
+
+.reminder-icon.urgent {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.check-button {
+  min-width: 28px;
+  min-height: 28px;
+  border-color: var(--separator-strong);
+  color: var(--text-tertiary);
+}
+
+.tip-panel {
+  background: var(--warning-soft);
+  border-color: rgba(178, 80, 0, 0.2);
+  color: var(--warning);
+}
+
+.tip-panel p,
+.tip-panel button {
+  color: var(--warning);
+}
+
+.event-row,
+.reminder-card,
+.data-actions > div,
+.cycle-panel,
+.detail-hero {
+  background: var(--surface);
+  border-color: var(--separator);
+  border-radius: 8px;
+  box-shadow: var(--shadow-control);
+}
+
+.event-date,
+.calendar-toolbar strong,
+.calendar-day-number,
+.progress-entry-row strong,
+.detail-fee {
+  color: var(--text);
+}
+
+.segmented-control,
+.auth-tabs,
+.progress-mode-switch {
+  background: rgba(118, 118, 128, 0.12);
+  border-color: transparent;
+  border-radius: 8px;
+}
+
+.segmented-control button,
+.progress-mode-switch button,
+.auth-tabs button {
+  min-height: 32px;
+  color: var(--text-secondary);
+  border-color: transparent;
+  border-radius: 6px;
+}
+
+.segmented-control button.active,
+.progress-mode-switch button.active,
+.auth-tabs button.active {
+  background: var(--surface);
+  color: var(--text);
+  border-color: transparent;
+  box-shadow: var(--shadow-control);
+}
+
+.calendar-day {
+  background: var(--surface);
+  border-color: var(--separator);
+  border-radius: 7px;
+}
+
+.calendar-day.empty {
+  background: var(--surface-subtle);
+}
+
+.calendar-day.has-events {
+  background: var(--primary-soft);
+  border-color: rgba(0, 122, 255, 0.26);
+}
+
+.calendar-event-dot {
+  background: var(--danger);
+}
+
+.reminder-rule-row {
+  border-color: var(--separator);
+  background: var(--surface);
+}
+
+.danger-zone {
+  background: var(--danger-soft) !important;
+  border-color: rgba(215, 0, 21, 0.24) !important;
+}
+
+.deletion-status {
+  background: var(--warning-soft);
+  border-color: rgba(178, 80, 0, 0.24) !important;
+}
+
+.modal-backdrop {
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--separator);
+  border-radius: 12px;
+  box-shadow: var(--shadow-overlay);
+}
+
+.modal label,
+.rule-fieldset legend,
+.auth-form label,
+.form-grid label {
+  color: var(--text-secondary);
+}
+
+.rule-fieldset {
+  border-color: var(--separator);
+  border-radius: 8px;
+}
+
+.form-error {
+  color: var(--danger);
+}
+
+.form-success {
+  color: var(--success);
+}
+
+.toast {
+  top: 76px;
+  background: var(--surface);
+  border-color: rgba(36, 138, 61, 0.28);
+  color: var(--text);
+  box-shadow: var(--shadow-overlay);
+}
+
+.toast svg {
+  color: var(--success);
+}
+
+.auth-page {
+  background: var(--canvas);
+}
+
+.auth-card {
+  background: var(--surface);
+  border-color: var(--separator);
+  border-radius: 8px;
+  box-shadow: var(--shadow-overlay);
+}
+
+.auth-brand p {
+  color: var(--text-secondary);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .nav-item:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
+
+  .icon-button:hover,
+  .row-arrow:hover {
+    background: var(--surface-hover);
+    color: var(--primary);
+  }
+
+  .primary-button:hover:not(:disabled) {
+    background: var(--primary-hover);
+    box-shadow: 0 3px 8px rgba(0, 122, 255, 0.2);
+    transform: translateY(-1px);
+  }
+
+  .secondary-button:hover:not(:disabled),
+  .logout-button:hover:not(:disabled),
+  .filter-button:hover,
+  select.filter-button:hover {
+    background: var(--surface-hover);
+    border-color: var(--separator-strong);
+    color: var(--primary);
+  }
+
+  .card-row-main-button:hover {
+    background: var(--surface-subtle);
+  }
+
+  .calendar-day.has-events:hover {
+    background: var(--primary-soft);
+    border-color: var(--primary);
+  }
+
+  .check-button:hover {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+  }
+}
+
+@media (max-width: 680px) {
+  .sidebar {
+    padding-top: max(18px, env(safe-area-inset-top));
+    padding-bottom: max(18px, env(safe-area-inset-bottom));
+  }
+
+  .sidebar-close {
+    display: grid;
+  }
+
+  .topbar {
+    height: 56px;
+    padding-inline: 16px;
+  }
+
+  .content {
+    padding: 26px 16px calc(42px + env(safe-area-inset-bottom));
+  }
+
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .logout-button,
+  .filter-button,
+  select.filter-button,
+  .segmented-control button,
+  .progress-mode-switch button,
+  .auth-tabs button {
+    min-height: 44px;
+  }
+
+  .icon-button,
+  .mobile-menu,
+  .row-arrow,
+  .check-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .metrics {
+    border-radius: 8px;
+  }
+
+  .metric {
+    min-height: 106px;
+  }
+
+  .progress-panel {
+    padding: 16px;
+  }
+
+  .modal {
+    border-radius: 10px;
+  }
+
+  .toast {
+    top: calc(64px + env(safe-area-inset-top));
+    right: 12px;
+    left: 12px;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .sidebar,
+  .topbar {
+    background: var(--material-solid);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --separator: rgba(60, 60, 67, 0.42);
+    --separator-strong: rgba(60, 60, 67, 0.58);
+    --text-secondary: #424245;
+  }
+
+  .primary-button,
+  .danger-button {
+    border: 1px solid currentColor;
+  }
+
+  .card-row,
+  .fee-row,
+  .progress-item,
+  .reminder-row {
+    border-color: var(--separator);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button,
+  input,
+  select,
+  textarea,
+  .sidebar,
+  .sidebar-scrim,
+  .toast,
+  .modal,
+  .modal-backdrop {
+    transition-duration: 0.01ms !important;
+  }
+
+  button:active:not(:disabled),
+  .primary-button:hover:not(:disabled),
+  .secondary-button:hover:not(:disabled) {
+    transform: none;
+  }
+}

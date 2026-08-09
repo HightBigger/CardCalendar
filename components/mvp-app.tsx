@@ -178,6 +178,14 @@ type CardDraft = {
 
 type View = "overview" | "cards" | "calendar" | "reminders" | "settings";
 
+const VIEW_LABEL: Record<View, string> = {
+  overview: "概览",
+  cards: "我的卡片",
+  calendar: "年费日历",
+  reminders: "提醒中心",
+  settings: "设置",
+};
+
 const STATUS_LABEL: Record<string, string> = {
   pending: "待确认",
   waived: "已免除",
@@ -258,6 +266,18 @@ export function CardCalendarApp() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
   const noticeTimer = useRef<number | null>(null);
+  const mobileMenuRef = useRef<HTMLButtonElement | null>(null);
+  const sidebarRef = useRef<HTMLElement | null>(null);
+
+  const closeMobileNavigation = useCallback((restoreFocus = false) => {
+    setMobileNav(false);
+    if (
+      restoreFocus &&
+      window.matchMedia("(max-width: 680px)").matches
+    ) {
+      window.requestAnimationFrame(() => mobileMenuRef.current?.focus());
+    }
+  }, []);
 
   const showNotice = useCallback((message: string) => {
     setNotice(message);
@@ -307,13 +327,27 @@ export function CardCalendarApp() {
   }, []);
 
   useEffect(() => {
-    if (!mobileNav) return;
+    if (!mobileNav || !window.matchMedia("(max-width: 680px)").matches) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusFrame = window.requestAnimationFrame(() => {
+      sidebarRef.current
+        ?.querySelector<HTMLElement>(".nav-item.active, .nav-item")
+        ?.focus();
+    });
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMobileNav(false);
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeMobileNavigation(true);
+      }
     };
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [mobileNav]);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [closeMobileNavigation, mobileNav]);
 
   async function refresh() {
     await load();
@@ -561,21 +595,32 @@ export function CardCalendarApp() {
     { key: "cards", label: "我的卡片", icon: "credit" },
     { key: "calendar", label: "年费日历", icon: "calendar" },
     { key: "reminders", label: "提醒中心", icon: "bell" },
-    { key: "settings", label: "设置", icon: "settings" },
   ];
 
   return (
     <main className="app-frame">
       <button
         className={"sidebar-scrim" + (mobileNav ? " visible" : "")}
-        aria-label="关闭导航"
-        onClick={() => setMobileNav(false)}
+        aria-hidden="true"
+        tabIndex={-1}
+        onClick={() => closeMobileNavigation(true)}
       />
-      <aside className={"sidebar" + (mobileNav ? " sidebar-open" : "")} id="app-sidebar">
+      <aside
+        className={"sidebar" + (mobileNav ? " sidebar-open" : "")}
+        id="app-sidebar"
+        ref={sidebarRef}
+      >
         <div className="brand">
           <span className="brand-mark"><Icon name="calendar" size={20} /></span>
           <span>卡年历</span>
           <small>CARD CALENDAR</small>
+          <button
+            className="icon-button sidebar-close"
+            aria-label="关闭导航"
+            onClick={() => closeMobileNavigation(true)}
+          >
+            <Icon name="close" size={18} />
+          </button>
         </div>
         <nav className="nav-list" aria-label="主导航">
           {navItems.map((item) => (
@@ -585,7 +630,7 @@ export function CardCalendarApp() {
               aria-current={view === item.key ? "page" : undefined}
               onClick={() => {
                 setView(item.key);
-                setMobileNav(false);
+                closeMobileNavigation(true);
               }}
             >
               <Icon name={item.icon} size={18} />
@@ -597,7 +642,14 @@ export function CardCalendarApp() {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <button className="nav-item" onClick={() => setView("settings")}>
+          <button
+            className={"nav-item" + (view === "settings" ? " active" : "")}
+            aria-current={view === "settings" ? "page" : undefined}
+            onClick={() => {
+              setView("settings");
+              closeMobileNavigation(true);
+            }}
+          >
             <Icon name="settings" size={18} />
             <span>设置</span>
           </button>
@@ -615,6 +667,7 @@ export function CardCalendarApp() {
         <header className="topbar">
           <button
             className="mobile-menu"
+            ref={mobileMenuRef}
             aria-label="打开导航"
             aria-expanded={mobileNav}
             aria-controls="app-sidebar"
@@ -622,7 +675,7 @@ export function CardCalendarApp() {
           >
             <Icon name="menu" />
           </button>
-          <div className="topbar-title">{navItems.find((item) => item.key === view)?.label}</div>
+          <div className="topbar-title">{VIEW_LABEL[view]}</div>
           <div className="topbar-actions">
             <button
               className="icon-button"
@@ -1068,16 +1121,22 @@ function CalendarView(props: { events: ApiFeeEvent[]; cards: ApiCard[] }) {
       <div className="calendar-toolbar-row">
         <div className="segmented-control" role="tablist" aria-label="日历视图">
           <button
+            id="calendar-month-tab"
             role="tab"
             aria-selected={mode === "month"}
+            aria-controls="calendar-month-panel"
+            tabIndex={mode === "month" ? 0 : -1}
             className={mode === "month" ? "active" : ""}
             onClick={() => setMode("month")}
           >
             月视图
           </button>
           <button
+            id="calendar-list-tab"
             role="tab"
             aria-selected={mode === "list"}
+            aria-controls="calendar-list-panel"
+            tabIndex={mode === "list" ? 0 : -1}
             className={mode === "list" ? "active" : ""}
             onClick={() => setMode("list")}
           >
@@ -1085,7 +1144,12 @@ function CalendarView(props: { events: ApiFeeEvent[]; cards: ApiCard[] }) {
           </button>
         </div>
       </div>
-      <section className="section-block">
+      <section
+        className="section-block"
+        id={mode === "month" ? "calendar-month-panel" : "calendar-list-panel"}
+        role="tabpanel"
+        aria-labelledby={mode === "month" ? "calendar-month-tab" : "calendar-list-tab"}
+      >
         {mode === "month" ? (
           <>
             <div className="calendar-toolbar">
