@@ -643,23 +643,20 @@ export function CardCalendarApp() {
         </nav>
         <div className="sidebar-bottom">
           <button
-            className={"nav-item" + (view === "settings" ? " active" : "")}
+            className={"user-chip user-menu" + (view === "settings" ? " active" : "")}
             aria-current={view === "settings" ? "page" : undefined}
             onClick={() => {
               setView("settings");
               closeMobileNavigation(true);
             }}
           >
-            <Icon name="settings" size={18} />
-            <span>设置</span>
-          </button>
-          <div className="user-chip">
             <span className="avatar">{profile?.name?.[0] ?? "我"}</span>
             <span>
               <strong>{profile?.name || profile?.email || "个人账户"}</strong>
-              <small>个人账户</small>
+              <small>个人设置</small>
             </span>
-          </div>
+            <Icon name="arrow" size={15} />
+          </button>
         </div>
       </aside>
 
