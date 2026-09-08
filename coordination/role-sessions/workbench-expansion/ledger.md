@@ -15,6 +15,7 @@
 | 2026-08-12 | 本轮只完善文档，不实现业务代码；每个角色只写自己的交付文档。 | Integrator | 先统一范围、术语、优先级和数据边界，再进入实现。 | all |
 | 2026-08-12 | 所有活动/权益/兑换规则必须记录来源、有效期、地区/渠道限制和最后确认时间；收益只做用户输入的记录与计算。 | Integrator | 银行规则会变，且产品不应提供金融承诺。 | product, architect, dba, ux |
 | 2026-08-12 | 兑换分阶段：P0 只记录外部兑换并在用户确认到账后幂等记账；系统内积分预占、并发锁和自动履约后置到 P1/P2。 | Integrator | 架构、DBA、QA 复核显示首个纵切应保持手工优先，避免把未实现的自动兑换能力写成当前交付。 | product, architect, dba, qa |
+| 2026-08-14 | 开启第二轮调研复核，重点覆盖活动资格/报名、权益下发与核销、刷卡交易口径、积分批次与兑换失败恢复；角色只修改各自文档，主会话负责合并。 | Integrator | 第一轮文档已覆盖主体范围，但需要验证边界状态、实际银行差异和首个可开发纵切是否足够明确。 | product, architect, dba, ux, security, qa |
 
 ## Session Register
 | Status | Title | Role | Thread ID | Branch/worktree | Owned files | Depends on | Output | Validation |
@@ -25,6 +26,13 @@
 | ready | UX｜Cardfolio｜工作台信息架构 | UX / design | `019ff620-6f25-7141-b02a-faaab0db7fa5` | `/Users/chenyixing/.codex/worktrees/e8a7/xyk管理` | `docs/UX-WORKBENCH.md` | current UI + product scope | navigation, views, empty/error states | UX-R2-01..10 static coverage |
 | ready | 安全工程师｜Cardfolio｜工作台隐私边界 | Security engineer | `/root/security_review` | shared workspace | `docs/SECURITY-WORKBENCH.md` | PRD + architecture + database scope | threat model, data minimization, abuse controls | static review, diff check |
 | ready | QA｜Cardfolio｜工作台验收矩阵 | QA | `/root/qa_review` | shared workspace | `docs/QA-WORKBENCH.md` | PRD + architecture + UX scope | test matrix, edge cases, release gates | static review, diff check |
+| superseded | 产品经理｜Cardfolio｜第二轮规则与场景复核 | Product manager | `019ff620-6e9c-7aa0-9df6-17bfda281928` | archived worktree unavailable | `docs/PRD-WORKBENCH.md` | first-round PRD + public source review | replaced by new worktree session | no handoff |
+| superseded | 架构师｜Cardfolio｜第二轮状态与接口复核 | Architect | `019ff620-6eaa-70e1-ba4b-84507a8facbb` | archived worktree unavailable | `docs/ARCHITECTURE-WORKBENCH.md` | revised PRD | replaced by new worktree session | no handoff |
+| superseded | DBA｜Cardfolio｜第二轮约束与演进复核 | DBA | `019ff620-6eab-7af3-8981-48d0536ae3a1` | archived worktree unavailable | `docs/DATABASE-WORKBENCH.md` | revised PRD + architecture | replaced by new worktree session | no handoff |
+| complete | UX｜Cardfolio｜第二轮工作台流程复核 | UX / design | `019ff620-6f25-7141-b02a-faaab0db7fa5` | existing role worktree | `docs/UX-WORKBENCH.md` | revised PRD | workflow/state updates and UX-R2-B01..B12 | static coverage passed |
+| complete | 产品经理｜Cardfolio｜第二轮规则与场景复核（新 worktree） | Product manager | `01a0001f-6989-7561-804d-d661679a431f` | `/Users/chenyixing/.codex/worktrees/c69b/xyk管理` | `docs/PRD-WORKBENCH.md` | e756538 + official source review | v0.4 PRD and P0/P1 acceptance | static/source checks passed |
+| complete | 架构师｜Cardfolio｜第二轮状态与接口复核（新 worktree） | Architect | `01a0001f-698a-7002-aa36-4bae27bd73da` | `/Users/chenyixing/.codex/worktrees/07cf/xyk管理` | `docs/ARCHITECTURE-WORKBENCH.md` | revised PRD | state/API/invariant contract | `git diff --check` passed |
+| complete | DBA｜Cardfolio｜第二轮约束与演进复核（新 worktree） | DBA | `01a0001f-69f7-7763-93c4-8c1af9a2fc91` | `/Users/chenyixing/.codex/worktrees/002e/xyk管理` | `docs/DATABASE-WORKBENCH.md` | revised PRD + architecture | schema/ledger/inbox contract | `git diff --check`, fence check passed |
 
 ## Handoffs
 ### product
@@ -77,9 +85,23 @@
 | 3 | 数据模型与迁移 | Integrator | product + architect + dba | completed |
 | 4 | 工作台信息架构 | Integrator | product + ux | completed |
 | 5 | 安全与质量门槛 | Integrator | product + architect + dba + ux | completed |
-| 6 | 合并文档、验证、推送 | Integrator | all handoffs | in_progress |
+| 6 | 合并文档、验证、推送 | Integrator | all handoffs | completed locally; push pending user release decision |
 
 ## Final Evidence
-- Commits: pending integration commit.
-- Test / build / deployment checks: `git diff --check`; no application tests/build because this turn is documentation-only.
-- Deferred follow-ups: freeze Gate 0 contracts, then implement a narrow manual vertical slice; add browser/assistive-tech prototype validation before UI implementation.
+- Commits: uncommitted documentation diff; no push performed.
+- Test / build / deployment checks: `git diff --check` passed; static docs check passed (8 files); `npm run typecheck`, `npm test -- --run` (17 files/45 tests), and `npm run build` passed. Workbench modules remain unimplemented.
+- Deferred follow-ups: freeze Gate 0 contracts, create migrations/API tests for the P0 manual vertical slice, then add browser/assistive-tech prototype validation before UI implementation.
+
+## Second-Round Handoffs
+
+### Scope
+- Review date: 2026-08-14
+- Research focus: campaign eligibility/enrollment/reward settlement, benefit delivery/usage, spend qualification basis, points lots/expiry/reconciliation, redemption failure/refund, and first vertical-slice boundaries.
+- Integration rule: role worktrees may update only their owned document; parent session must review and merge all changes.
+
+### Integrated second-round findings
+- Product: PRD v0.4 narrows P0 to source -> activity participation -> manual spend task -> reward reconciliation; benefits and points/redemption ledgers move to P1. Source confidence, qualification basis, pending/confirmed progress, refund reversal and delayed rewards are explicit.
+- UX: `docs/UX-WORKBENCH.md` adds MVP/extension coexistence, independent state presentation, mobile/desktop actions and `UX-R2-B01..B12`.
+- Security: P0 is blocked until composite ownership checks, immutable usage/ledger facts, inbox idempotency, source immutability, re-authenticated export/delete and cross-user worker tests are implemented.
+- QA: P0 is blocked until database facts can represent participation, benefit usage, spend reversal, points lots/mismatch and external redemption failure/refund; current code still verifies annual-fee MVP only.
+- Parent integration: product, architecture and DBA worktree diffs have been reviewed and merged; UX, security and QA second-round findings are recorded above and in their documents.

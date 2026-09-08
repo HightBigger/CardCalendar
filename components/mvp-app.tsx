@@ -179,7 +179,7 @@ type CardDraft = {
 type View = "overview" | "cards" | "calendar" | "reminders" | "settings";
 
 const VIEW_LABEL: Record<View, string> = {
-  overview: "概览",
+  overview: "工作台",
   cards: "我的卡片",
   calendar: "年费日历",
   reminders: "提醒中心",
@@ -591,7 +591,7 @@ export function CardCalendarApp() {
   }
 
   const navItems: { key: View; label: string; icon: "grid" | "credit" | "calendar" | "bell" | "settings" }[] = [
-    { key: "overview", label: "概览", icon: "grid" },
+    { key: "overview", label: "工作台", icon: "grid" },
     { key: "cards", label: "我的卡片", icon: "credit" },
     { key: "calendar", label: "年费日历", icon: "calendar" },
     { key: "reminders", label: "提醒中心", icon: "bell" },
@@ -613,7 +613,7 @@ export function CardCalendarApp() {
         <div className="brand">
           <span className="brand-mark"><Icon name="calendar" size={20} /></span>
           <span>卡片档案</span>
-          <small>信用卡管理</small>
+          <small>个人金融工作台</small>
           <button
             className="icon-button sidebar-close"
             aria-label="关闭导航"
@@ -806,7 +806,7 @@ function Overview(props: {
     <>
       <div className="welcome-row">
         <div>
-          <p className="eyebrow">总览</p>
+          <p className="eyebrow">工作台 / 运营总览</p>
           <h1>{props.profile?.name ? props.profile.name + "，你好" : "欢迎回来"}</h1>
           <p className="subline">未来 90 天年费与免年费进度都在这里。</p>
         </div>

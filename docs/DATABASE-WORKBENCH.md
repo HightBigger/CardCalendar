@@ -1,591 +1,1176 @@
-# Cardfolio 工作台扩展数据模型（草案）
+# Cardfolio 工作台扩展数据模型（第四轮 DBA 复核稿 + 第十轮增量）
 
-> 本文只规划数据模型，不创建迁移、不修改 `db/schema/**` 或业务代码。基线为 `main@c10bd5c`。实际可执行 DDL 仍以 `db/migrations/` 和 Drizzle schema 为准。
+> 本文只定义数据库设计，不创建迁移、不修改 `db/schema/**` 或业务代码。复核基线为 `main@e756538`；实际 DDL 必须拆分、在影子库演练后才可进入 `db/migrations/`。
 
-## 1. 基线与设计原则
+> 第十轮增量研究稿：[CARD-FEATURE-ROUND10-DATA.md](research/CARD-FEATURE-ROUND10-DATA.md)。其 canonical/legacy 写围栏、复合 scope、projection watermark、精度/区间冻结和 D-01--D-16 验收优先于本文早期同名草案；在真实 PostgreSQL、RLS、并发和 PITR 证据完成前仍不可部署。
 
-当前项目是 PostgreSQL 15+、Drizzle ORM，业务表统一使用 `uuid` 主键，并在子表重复保存 `user_id`。时间约定是 `timestamptz` 存储瞬时点、`date` 存储用户时区内的业务日期；金额约定是 `numeric(14,2)` 和 ISO 4217 三位大写币种。本文沿用这些约定，不引入 PostgreSQL enum，以便和现有 `text + check` 写法以及 Drizzle 生成方式兼容。
+## 1. 复核结论
 
-工作台采用“定义/版本、实例/流水”分离：
+首轮“定义/版本、实例/流水”方向成立，但以下差异会破坏历史解释或重算，必须在实施前修正：
 
-- `card_campaigns` 是活动身份；`rule_versions` 是不可变的活动规则版本，历史版本不可回写。
-- `activities` 是用户录入或导入的事实事件；任务进度由事实聚合。
-- `campaign_requirements` 是活动版本下的结构化条件；`spend_tasks` 是用户对条件的执行实例。
-- `benefits` 是权益定义；`entitlements` 是某个周期实际发放给用户的额度。
-- `points_accounts` 是积分账户；`points_ledger` 是不可变积分流水，余额以聚合为事实。
-- `redemptions` 是兑换订单和状态机；积分扣减必须与订单状态变更在同一事务内完成。
-- `source_snapshots` 保存规则/导入来源的脱敏快照；`value_records` 保存估算或实际价值流水。
+| 领域 | 首轮问题 | 第二轮结论 |
+| --- | --- | --- |
+| 活动 | `card_campaigns` 绑定单卡，`activities` 混合报名、消费和奖励事实 | `campaigns` 只表示活动身份；每张卡建立唯一 `activity_participation`，资格、报名和结果是三条正交状态轴 |
+| 规则/来源 | `source_snapshots` 同时承担链接目录和快照；规则只允许一个可空来源 | 可变 `source_references` 与不可变 `source_snapshots` 分离；`rule_versions` 通过 citation 至少引用一个 primary snapshot |
+| 刷卡任务 | 只有进度缓存，没有任务内规则快照和可重放事实流水 | 激活任务时冻结规则与刷卡方式；`spend_task_entries` 只追加，缓存由 sequence 重放得到，退款/冲正可使达标回退 |
+| 权益 | 用 `value_records` 兼任权益使用流水 | 权益定义、周期发放实例、预约/使用实例、额度流水分开；只有确认使用的流水减少额度 |
+| 积分 | 缺少 lot、分配关系、账户内序号和对账调整事实 | 积分账本是唯一事实源；余额、lot remaining 和未分配差额均是带水位的缓存，可从流水及 lot allocation 重建 |
+| 兑换 | 首轮预留模型超出手工 MVP，失败/退款语义不完整 | P1-b 不预留；外部兑换确认成功后幂等记 debit，退款幂等记 refund；失败不扣点，余额不足保留真实负数并进入待核对 |
 
-所有用户拥有的数据都带 `user_id not null references users(id) on delete cascade`。写入或更新必须同时按 `(id, user_id)` 查询，且在事务内核对所有关联对象属于同一用户；后续可用复合外键和 RLS 把该约束下沉到数据库。
+核心不变量：
 
-禁止保存完整卡号、有效期、CVV、网银密码、银行登录 cookie、银行卡凭据或可直接登录银行的 token。卡片只能复用现有 `cards.last4`；外部会员号只能保存不可逆哈希或用户自定义的非敏感别名。
+1. 规则版本、来源快照、任务/权益/积分流水一经引用不得原地修改或物理删除。
+2. 业务事实与缓存分离；每个缓存都保存最后应用的账户内或聚合内 sequence，并提供从零重建过程。
+3. 所有子表重复保存 `user_id`，用复合外键把“同一用户”下沉到 PostgreSQL；需要同卡的关系同时重复 `card_id`。
+4. 手工输入、导入和未来同步均提供稳定 `business_key`/`client_request_key`；相同键不同请求摘要返回冲突，不静默复用。
+5. P0 不自动判断银行资格、不自动分配受限积分 lot、不自动发起报名或兑换。
 
-### 1.1 精度、时间和软删除
+## 2. 通用 PostgreSQL 约定
 
-- 金额、估算价值、兑换成本：`numeric(14,2)`，不可用浮点；每条金额都带 `currency char(3)`。不做隐式汇率换算，换算必须显式记录来源、汇率和目标币种。
-- 积分、里程和可分割单位：`numeric(20,4)`；单位写在 `unit_code`（如 `POINT`、`MILE`），同一账户不可混用单位。即使银行展示整数，也以四位小数精度入库。
-- 事件发生时间、抓取时间、审计时间：`timestamptz`。活动有效期和任务统计窗口使用 `date` 加明确的 IANA `timezone`，窗口两端均为包含日期（inclusive）。
-- `created_at`、`updated_at` 使用现有 `set_updated_at()` 触发器；定义表使用 `archived_at`，一般事实可用 `voided_at`，积分流水只能插入反向流水，不允许修改或作废原记录。账户删除沿用现有两阶段清理和审计策略。
-- 除 `metadata`/`rule_json`/`normalization_json` 等扩展列外，参与查询、授权、金额/点数核算、去重和状态迁移的字段必须结构化并有约束。
+### 2.1 所有权与复合外键
 
-## 2. 关系和版本语义
-
-```text
-users 1──N cards
-  cards 1──N card_campaigns 1──N rule_versions 1──N campaign_requirements 1──N spend_tasks
-                                      └──N activities ───────────────────────┘
-  cards 1──N benefits 1──N entitlements
-  cards 1──N points_accounts 1──N points_ledger
-  cards 1──N redemptions ────────────────┘
-  cards 1──N value_records
-users 1──N source_snapshots
-```
-
-`rule_versions.version_no` 是同一活动的单调递增版本号。规则发生任何影响资格、金额、有效期或渠道的变化时创建新行，并将旧版本 `superseded_at` 写入；不得更新已被活动事实、任务或权益引用的规则字段。`activities`、`spend_tasks`、`entitlements` 和 `redemptions` 都保存其创建时引用的 `rule_version_id`，因此历史结果不随规则编辑变化。
-
-## 3. SQL 草案
-
-以下语句按依赖顺序执行即可作为未来迁移的起点；仅为草案，不应直接在生产数据库执行。
-
-### 3.1 来源快照
+所有父表除主键外增加 `unique (id, user_id)`；需要固定卡归属的表增加 `unique (id, user_id, card_id)`。子表使用复合外键，而不是只靠 API 查询：
 
 ```sql
+-- 对现有表的实施前置；上线前先清理孤儿数据，再以 NOT VALID 加入并 VALIDATE。
+create unique index cards_id_user_unique on cards (id, user_id);
+
+-- 子表范式示例。
+foreign key (card_id, user_id) references cards (id, user_id) on delete restrict
+```
+
+服务端仍必须使用会话中的 `user_id` 查询；复合外键是末道一致性保护，不替代授权。RLS 启用后，Web 事务执行 `set local app.user_id`，worker 使用最小权限的独立角色。后台角色不得绕过业务键、审计或 append-only 触发器。
+
+### 2.2 精度、币种与单位
+
+- 法币金额使用 `numeric(14,2)`，禁止 `real/double precision/money`。币种使用 `char(3)` 并引用受控 `iso_4217_currencies(code)`；仅用正则不能阻止 `ZZZ`。若以后支持三位小数币种，先把金额统一扩到 `numeric(18,3)`，不得逐表改变精度。
+- 积分/里程使用 `numeric(20,4)`；账户保存 `points_scale smallint check (points_scale between 0 and 4)`，写入触发器校验 `round(points_delta, points_scale) = points_delta`。同一账户的所有流水继承账户 `unit_code`，客户端不能另传不同单位。
+- `count_delta` 使用 `integer`；次数不允许小数。金额和点数的正负表达方向，禁止额外用 direction 与符号组成两套真相。
+- 所有汇率换算保存原金额/币种、目标金额/币种、`numeric(20,10)` 汇率、估值时点和 source snapshot；不覆盖原金额。
+
+### 2.3 日期、时区与窗口
+
+- 真实瞬时点用 `timestamptz`；银行口径的发生日、入账日、到期日用 `date`。
+- 活动/任务窗口保存 inclusive 的 `window_start/window_end date` 与 IANA `timezone`。写入触发器通过 `pg_timezone_names` 校验时区；不接受固定偏移量或浏览器缩写。
+- 从 `timestamptz` 派生的 `local_date` 在写入时按对象冻结的时区计算并固化。用户以后改变默认时区不会改写历史。
+- 截止日 worker 用对象时区计算下一次执行时间；夏令时不存在或重复的本地时间必须有固定策略并纳入测试。
+
+### 2.4 软删除、不可变事实与审计
+
+- 定义/模板可使用 `archived_at`；归档不释放业务唯一键，避免同一 `campaign_key`、`benefit_key` 被重新解释。
+- 参与实例、任务、权益实例、兑换以状态终结，不靠软删除隐藏结果。
+- 来源快照、已激活规则版本及所有 ledger/entry 表禁止 `update/delete`。错误通过新版本、correction 或 reversal 表达。
+- 仅账户删除清理流程可物理删除，顺序由叶子事实到父表；清理操作写不可包含敏感值的合规审计，并等待备份保留期自然过期。
+- 所有状态转换、调整、冲正、来源核对、导出和清理必须在业务事务内写现有 `audit_logs`，至少记录 actor、request/correlation id、对象、动作、前后状态摘要和时间。不得记录完整请求体、原始账单、凭据或完整卡号。
+
+## 3. 来源与规则版本
+
+### 3.1 SourceReference 与不可变 SourceSnapshot
+
+```sql
+create table source_references (
+  id                uuid primary key default gen_random_uuid(),
+  user_id           uuid not null references users(id) on delete cascade,
+  normalized_uri    text,
+  uri_hash          char(64),
+  publisher         text,
+  title             text not null,
+  source_level      text not null check (source_level in
+                    ('official_rule','official_product','official_mall','regulator','third_party','user_manual')),
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now(),
+  archived_at       timestamptz,
+  unique (id, user_id),
+  check ((normalized_uri is null) = (uri_hash is null)),
+  check (uri_hash is null or uri_hash ~ '^[0-9a-f]{64}$')
+);
+
+create unique index source_references_uri_unique
+  on source_references (user_id, uri_hash) where uri_hash is not null;
+
 create table source_snapshots (
   id                  uuid primary key default gen_random_uuid(),
   user_id             uuid not null references users(id) on delete cascade,
-  source_type         text not null check (source_type in ('manual', 'public_url', 'document', 'import', 'system')),
-  source_name         text,
-  source_uri          text,
+  reference_id        uuid,
+  capture_key         text not null,
+  capture_method      text not null check (capture_method in ('manual','url','document','import')),
   captured_at         timestamptz not null default now(),
-  source_timezone     text not null default 'Asia/Shanghai',
+  accessed_on         date not null,
+  published_on        date,
   content_hash        char(64) not null check (content_hash ~ '^[0-9a-f]{64}$'),
-  snapshot_json       jsonb not null default '{}'::jsonb,
-  normalization_json  jsonb not null default '{}'::jsonb,
+  excerpt             text,
+  object_key          text,
   parser_version      text,
-  status              text not null default 'active'
-                      check (status in ('active', 'superseded', 'invalid', 'redacted')),
-  superseded_at       timestamptz,
+  confidence          text not null check (confidence in
+                      ('official_verified','official_incomplete','third_party','user_unverified')),
+  actor_type          text not null default 'user' check (actor_type in ('user','system','admin')),
+  actor_user_id       uuid references users(id) on delete set null,
+  normalization_json  jsonb not null default '{"schema_version":1}'::jsonb,
   created_at          timestamptz not null default now(),
-  updated_at          timestamptz not null default now(),
-  archived_at         timestamptz
+  unique (id, user_id),
+  unique (user_id, capture_key),
+  foreign key (reference_id, user_id) references source_references (id, user_id) on delete restrict,
+  check (length(coalesce(excerpt, '')) <= 20000),
+  check (actor_user_id is null or actor_user_id = user_id),
+  check (reference_id is not null or capture_method in ('manual','document','import'))
 );
-
-create unique index source_snapshots_hash_unique
-  on source_snapshots (user_id, source_type, content_hash);
-create index source_snapshots_user_time_idx
-  on source_snapshots (user_id, captured_at desc)
-  where archived_at is null;
 ```
 
-`snapshot_json` 必须先做 PAN/凭据脱敏；`source_uri` 只允许公开 URL 或内部对象键，不得存银行登录地址中的 token。原文文件宜放加密对象存储，表中仅保存内容哈希、脱敏结构化结果和对象键。
+`capture_key` 只去重同一次命令；用户在不同日期重新核对同一内容仍创建新 snapshot。原文对象先脱敏再加密保存，数据库只存受控对象键和 hash。应用角色对 `source_snapshots` 只有 `select/insert`；数据库触发器拒绝 `update/delete`。URL 内容变化、重新访问或人工修订都不能覆盖旧快照。
 
-### 3.2 活动规则和事实活动
+### 3.2 Rule、RuleVersion 与引用证据
 
 ```sql
-create table card_campaigns (
-  id                    uuid primary key default gen_random_uuid(),
-  user_id               uuid not null references users(id) on delete cascade,
-  card_id               uuid not null references cards(id) on delete restrict,
-  campaign_key          text not null check (length(trim(campaign_key)) between 1 and 120),
-  name                  text not null check (length(trim(name)) between 1 and 160),
-  provider_name         text not null check (length(trim(provider_name)) between 1 and 120),
-  status                text not null default 'draft'
-                        check (status in ('draft', 'active', 'paused', 'expired', 'archived')),
-  notes                 text,
-  created_at            timestamptz not null default now(),
-  updated_at            timestamptz not null default now(),
-  archived_at           timestamptz,
-  unique (user_id, card_id, campaign_key)
-);
+create extension if not exists btree_gist; -- 需先确认托管 PostgreSQL 权限
 
-create index card_campaigns_user_status_date_idx
-  on card_campaigns (user_id, status, created_at desc)
-  where archived_at is null;
-create index card_campaigns_card_idx on card_campaigns (card_id, created_at desc);
+create table rules (
+  id              uuid primary key default gen_random_uuid(),
+  user_id         uuid not null references users(id) on delete cascade,
+  rule_kind       text not null check (rule_kind in
+                  ('annual_fee','campaign','benefit','spend','points','redemption')),
+  rule_key        text not null,
+  created_at      timestamptz not null default now(),
+  archived_at     timestamptz,
+  unique (id, user_id),
+  unique (user_id, rule_kind, rule_key)
+);
 
 create table rule_versions (
-  id                    uuid primary key default gen_random_uuid(),
-  user_id               uuid not null references users(id) on delete cascade,
-  campaign_id           uuid not null references card_campaigns(id) on delete restrict,
-  version_no            integer not null check (version_no > 0),
-  status                text not null default 'draft'
-                        check (status in ('draft', 'active', 'paused', 'expired', 'superseded', 'archived')),
-  valid_from            date not null,
-  valid_to              date,
-  enrollment_deadline   date,
-  timezone              text not null default 'Asia/Shanghai',
-  region_code           text,
-  channel               text,
-  currency              char(3),
-  source_snapshot_id    uuid references source_snapshots(id) on delete restrict,
-  terms_uri             text,
-  last_confirmed_at     timestamptz,
-  rule_json             jsonb not null default '{}'::jsonb,
-  superseded_at         timestamptz,
-  created_at            timestamptz not null default now(),
-  updated_at            timestamptz not null default now(),
-  archived_at           timestamptz,
-  unique (campaign_id, version_no),
-  check (valid_to is null or valid_to >= valid_from),
-  check (enrollment_deadline is null or enrollment_deadline <= valid_to or valid_to is null),
-  check (currency is null or currency ~ '^[A-Z]{3}$')
+  id                  uuid primary key default gen_random_uuid(),
+  user_id             uuid not null references users(id) on delete cascade,
+  rule_id             uuid not null,
+  version_no          integer not null check (version_no > 0),
+  status              text not null default 'draft' check (status in
+                      ('draft','active','superseded','expired','needs_review')),
+  effective_from      date not null,
+  effective_to        date,
+  timezone            text not null,
+  eligibility_text    text,
+  conditions_json     jsonb not null default '{"schema_version":1}'::jsonb,
+  change_summary      text not null,
+  verified_by_user_at timestamptz,
+  activated_at        timestamptz,
+  superseded_at       timestamptz,
+  created_at          timestamptz not null default now(),
+  unique (id, user_id),
+  unique (id, user_id, rule_id),
+  unique (rule_id, version_no),
+  foreign key (rule_id, user_id) references rules (id, user_id) on delete restrict,
+  check (effective_to is null or effective_to >= effective_from),
+  check (status <> 'active' or activated_at is not null),
+  check (status not in ('superseded','expired') or activated_at is not null)
 );
 
-create unique index rule_versions_current_unique
-  on rule_versions (user_id, campaign_id)
-  where status in ('active', 'paused') and archived_at is null;
-create index rule_versions_user_date_idx
-  on rule_versions (user_id, valid_from desc, valid_to)
-  where archived_at is null;
-create index rule_versions_campaign_idx on rule_versions (campaign_id, version_no desc);
+alter table rule_versions add constraint rule_versions_active_period_excl
+  exclude using gist (
+    rule_id with =,
+    daterange(effective_from, effective_to, '[]') with &&
+  ) where (status = 'active');
 
-create table activities (
-  id                    uuid primary key default gen_random_uuid(),
-  user_id               uuid not null references users(id) on delete cascade,
-  card_id               uuid not null references cards(id) on delete restrict,
-  campaign_id           uuid references card_campaigns(id) on delete restrict,
-  rule_version_id       uuid references rule_versions(id) on delete restrict,
-  activity_type         text not null
-                        check (activity_type in ('enrollment', 'spend', 'purchase_count', 'bonus', 'benefit_use', 'adjustment', 'reversal')),
-  occurred_at           timestamptz not null,
-  occurred_local_date   date not null,
-  timezone              text not null default 'Asia/Shanghai',
-  amount                numeric(14,2),
-  currency              char(3),
-  quantity              numeric(20,4),
-  merchant_name         text,
-  merchant_category     text,
-  external_key          text,
-  source_snapshot_id    uuid references source_snapshots(id) on delete restrict,
-  note                  text,
-  metadata              jsonb not null default '{}'::jsonb,
-  voided_at             timestamptz,
-  created_at            timestamptz not null default now(),
-  updated_at            timestamptz not null default now(),
-  check (amount is null or amount >= 0),
-  check (quantity is null or quantity >= 0),
-  check (currency is null or currency ~ '^[A-Z]{3}$')
+create table rule_source_citations (
+  rule_version_id    uuid not null,
+  user_id            uuid not null,
+  source_snapshot_id uuid not null,
+  citation_role      text not null check (citation_role in ('primary','supporting')),
+  quoted_path        text,
+  created_at         timestamptz not null default now(),
+  primary key (rule_version_id, source_snapshot_id),
+  foreign key (rule_version_id, user_id) references rule_versions (id, user_id) on delete restrict,
+  foreign key (source_snapshot_id, user_id) references source_snapshots (id, user_id) on delete restrict
 );
 
-create unique index activities_campaign_external_unique
-  on activities (user_id, campaign_id, external_key)
-  where campaign_id is not null and external_key is not null and voided_at is null;
-create index activities_user_time_idx on activities (user_id, occurred_at desc);
-create index activities_campaign_type_date_idx
-  on activities (campaign_id, activity_type, occurred_local_date desc)
-  where voided_at is null;
-create index activities_card_date_idx on activities (user_id, card_id, occurred_local_date desc);
-create index activities_rule_version_idx on activities (rule_version_id, occurred_local_date desc)
-  where rule_version_id is not null and voided_at is null;
+create unique index rule_source_one_primary
+  on rule_source_citations (rule_version_id) where citation_role = 'primary';
 ```
 
-`external_key` 只接受来源系统的幂等键，不接受完整账单文本。手工活动可为空；导入或重试必须提供。`occurred_local_date` 由写入事务按 `timezone` 计算并固定，以免用户后来改时区导致历史活动跨日漂移。跨表的 `user_id/card_id/campaign_id` 一致性先由服务层事务校验，强约束阶段再加复合外键。
+激活规则必须走一个数据库函数/事务：锁 `rules`，分配下一 `version_no`，验证恰有一个 primary citation，再切换状态。普通 check 无法表达“至少一个子行”，因此用 deferred constraint trigger 在事务结束时验证；不得只在应用层检查。已离开 `draft` 的版本由不可变触发器保护，`needs_review` 经核对后创建新版本，不能原地恢复 active。排斥约束仅限制 active 生效区间；若环境不能安装 `btree_gist`，迁移必须改用锁 `rules` 的 constraint trigger，不能删除非重叠保证。
 
-### 3.3 活动条件和刷卡任务
+## 4. 活动报名与参与实例
 
 ```sql
-create table campaign_requirements (
-  id                    uuid primary key default gen_random_uuid(),
-  user_id               uuid not null references users(id) on delete cascade,
-  campaign_id           uuid not null references card_campaigns(id) on delete restrict,
-  rule_version_id       uuid not null references rule_versions(id) on delete restrict,
-  requirement_key       text not null check (length(trim(requirement_key)) between 1 and 100),
-  requirement_type      text not null
-                        check (requirement_type in ('spend_amount', 'spend_count', 'merchant', 'category', 'enrollment', 'custom')),
-  operator              text not null default 'gte'
-                        check (operator in ('gte', 'gt', 'eq', 'lte', 'lt', 'contains')),
-  target_amount         numeric(14,2),
-  target_count          integer,
-  currency              char(3),
-  window_start          date,
-  window_end            date,
-  timezone              text not null default 'Asia/Shanghai',
-  stack_mode            text not null default 'and' check (stack_mode in ('and', 'or')),
-  custom_rule_json      jsonb not null default '{}'::jsonb,
-  created_at            timestamptz not null default now(),
-  updated_at            timestamptz not null default now(),
-  archived_at           timestamptz,
-  unique (rule_version_id, requirement_key),
-  check (target_amount is null or target_amount >= 0),
-  check (target_count is null or target_count >= 0),
-  check (currency is null or currency ~ '^[A-Z]{3}$'),
-  check (window_end is null or window_start is null or window_end >= window_start),
-  check (requirement_type <> 'spend_amount' or target_amount is not null),
-  check (requirement_type <> 'spend_count' or target_count is not null),
-  check (requirement_type <> 'custom' or custom_rule_json <> '{}'::jsonb)
+create table campaigns (
+  id              uuid primary key default gen_random_uuid(),
+  user_id         uuid not null references users(id) on delete cascade,
+  rule_id         uuid not null,
+  campaign_key    text not null,
+  name            text not null,
+  provider_name   text not null,
+  status          text not null default 'draft' check (status in
+                  ('draft','published','ended','cancelled','needs_review','archived')),
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now(),
+  archived_at     timestamptz,
+  unique (id, user_id),
+  unique (id, user_id, rule_id),
+  unique (user_id, campaign_key),
+  foreign key (rule_id, user_id) references rules (id, user_id) on delete restrict
 );
 
-create index campaign_requirements_user_campaign_idx
-  on campaign_requirements (user_id, campaign_id, requirement_key)
-  where archived_at is null;
-create index campaign_requirements_rule_version_idx
-  on campaign_requirements (rule_version_id, requirement_key)
-  where archived_at is null;
+create table activity_participations (
+  id                     uuid primary key default gen_random_uuid(),
+  user_id                uuid not null references users(id) on delete cascade,
+  campaign_id            uuid not null,
+  card_id                uuid not null,
+  rule_id                uuid not null,
+  rule_version_id        uuid not null,
+  activity_instance_key  text not null,
+  eligibility_status     text not null default 'unknown' check (eligibility_status in
+                         ('unknown','potentially_eligible','user_confirmed_eligible',
+                          'user_confirmed_ineligible','needs_review')),
+  enrollment_status      text not null default 'not_started' check (enrollment_status in
+                         ('not_required','not_started','submitted','confirmed','rejected','expired','cancelled','unknown','needs_review')),
+  quota_status           text not null default 'unknown' check (quota_status in
+                         ('not_applicable','unknown','available','full','waitlisted','allocated','not_allocated','needs_review')),
+  outcome_status         text not null default 'not_started' check (outcome_status in
+                         ('not_started','in_progress','target_reached',
+                          'failed','expired','needs_review')),
+  qualification_status   text not null default 'unconfirmed' check (qualification_status in
+                         ('unconfirmed','user_confirmed','rejected','needs_review')),
+  enrollment_verified_at timestamptz,
+  quota_verified_at      timestamptz,
+  reward_verified_at     timestamptz,
+  row_version            bigint not null default 0,
+  created_at             timestamptz not null default now(),
+  updated_at             timestamptz not null default now(),
+  unique (id, user_id),
+  unique (id, user_id, card_id),
+  unique (user_id, campaign_id, card_id, activity_instance_key),
+  unique (id, user_id, card_id, activity_instance_key),
+  foreign key (campaign_id, user_id, rule_id)
+    references campaigns (id, user_id, rule_id) on delete restrict,
+  foreign key (rule_version_id, user_id, rule_id)
+    references rule_versions (id, user_id, rule_id) on delete restrict,
+  foreign key (card_id, user_id) references cards (id, user_id) on delete restrict,
+  check (enrollment_status <> 'confirmed' or enrollment_verified_at is not null),
+  check (quota_status not in ('available','full','waitlisted','allocated','not_allocated') or quota_verified_at is not null)
+);
+```
 
+```sql
+create table activity_rewards (
+  id                 uuid primary key default gen_random_uuid(),
+  user_id            uuid not null references users(id) on delete cascade,
+  participation_id   uuid not null,
+  reward_key         text not null,
+  request_hash       char(64) not null check (request_hash ~ '^[0-9a-f]{64}$'),
+  business_key       text not null,
+  status             text not null default 'not_expected' check (status in
+                     ('not_expected','expected_pending','delayed','received','reversed','disputed','unknown','needs_review')),
+  reward_type        text,
+  reward_amount_text text,
+  reward_cap_text    text,
+  expected_on        date,
+  received_on        date,
+  reversed_on        date,
+  reversal_reason    text,
+  source_snapshot_id uuid,
+  evidence_note      text,
+  row_version        bigint not null default 0,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now(),
+  unique (id, user_id),
+  unique (participation_id, reward_key, user_id),
+  unique (participation_id, business_key),
+  foreign key (participation_id, user_id)
+    references activity_participations (id, user_id) on delete restrict,
+  foreign key (source_snapshot_id, user_id)
+    references source_snapshots (id, user_id) on delete restrict
+);
+```
+
+```sql
+create table activity_reward_events (
+  id                  uuid primary key default gen_random_uuid(),
+  user_id             uuid not null references users(id) on delete cascade,
+  reward_id           uuid not null,
+  sequence            bigint not null check (sequence > 0),
+  business_key        text not null,
+  request_hash        char(64) not null check (request_hash ~ '^[0-9a-f]{64}$'),
+  event_type          text not null,
+  from_status         text,
+  to_status           text not null,
+  source_snapshot_id  uuid,
+  evidence_note       text,
+  occurred_at         timestamptz not null,
+  created_at          timestamptz not null default now(),
+  unique (id, user_id),
+  unique (reward_id, sequence),
+  unique (reward_id, business_key),
+  unique (reward_id, request_hash),
+  foreign key (reward_id, user_id) references activity_rewards (id, user_id) on delete restrict,
+  foreign key (source_snapshot_id, user_id)
+    references source_snapshots (id, user_id) on delete restrict
+);
+```
+
+活动规则中的适用卡种、地区、渠道和资格文本属于被冻结的 `rule_version`，不能保存为 `campaigns.applicable_card_ids`。quota_status 是 participation 的独立事实轴，available 不等于 allocated，unknown/full/not_allocated 阻止最终达标。`potentially_eligible` 只表示结构化条件未发现冲突，不能显示为用户已符合资格。并发状态更新使用 `row_version` 乐观锁并写审计；规则变化、卡归档或任务冲正只能将实例标为 `needs_review`，不能静默改为失败。
+
+`outcome_status` 只表示参与结果投影，不是 SpendTask 的 `progress_status`；奖励到账、撤回和争议应由独立 reward 事实或事件投影承载。旧草案中的 `reward_received` 枚举已移除，不能用一个参与状态代替奖励轴。
+
+`activity_rewards` 是独立事实，允许同一 participation 通过 reward_key 表示多个奖励段；状态变更应追加 activity_reward_events 或等价 append-only 历史，并以 request_hash/business_key 幂等。target_reached 不得自动创建奖励到账、积分流水或权益下发。
+
+P0 必须落地 `activity_reward_events`（或等价不可变表），不能只依赖 `activity_rewards.row_version`：事件至少保存 `reward_id`、`sequence`、`business_key`、`request_hash`、`from_status`、`to_status`、来源/证据、时间和 actor；`(reward_id, sequence)`、`(reward_id, business_key)`、`(reward_id, request_hash)` 唯一，应用角色不得更新/删除。奖励状态读模型只能从事件重放，重复确认命中原响应，同 key 异参数返回 409。
+
+报名动作如需独立历史，追加 `activity_participation_events(participation_id, sequence, event_type, business_key, occurred_at, payload)`；状态列只是其投影。实施时建议从第一版就建事件表，以便回答“何时由谁确认报名/资格”，唯一键为 `(participation_id, sequence)` 和 `(participation_id, business_key)`，同样禁止更新/删除。
+
+## 5. 刷卡规则快照、事实流水与进度缓存
+
+### 5.1 模板和任务内快照
+
+`spend_methods` 是用户可编辑模板，不是银行事实。任务激活时把渠道、地区、币种、商户范围、MCC/排除项和证据说明复制到任务内快照：
+
+```sql
 create table spend_tasks (
   id                    uuid primary key default gen_random_uuid(),
   user_id               uuid not null references users(id) on delete cascade,
-  card_id               uuid not null references cards(id) on delete restrict,
-  campaign_id           uuid not null references card_campaigns(id) on delete restrict,
-  requirement_id        uuid not null references campaign_requirements(id) on delete restrict,
-  instance_key          text not null default 'default',
-  rule_version_id       uuid not null references rule_versions(id) on delete restrict,
-  window_start           date not null,
-  window_end             date not null,
-  status                text not null default 'pending'
-                        check (status in ('pending', 'in_progress', 'qualified', 'expired', 'cancelled')),
-  target_amount         numeric(14,2),
+  card_id               uuid not null,
+  participation_id      uuid,
+  rule_id               uuid not null,
+  rule_version_id       uuid not null,
+  activity_instance_key text not null,
+  window_start          date not null,
+  window_end            date not null,
+  timezone              text not null,
+  cutoff_basis          text not null default 'unknown' check (cutoff_basis in
+                        ('occurred','posted','settled','unknown')),
+  input_mode            text not null default 'entries' check (input_mode in ('snapshot','entries')),
+  metric_type           text not null check (metric_type in
+                        ('count','amount','count_and_amount','count_or_amount','custom')),
+  condition_relation    text not null default 'all' check (condition_relation in ('all','any','custom')),
   target_count          integer,
-  progress_amount       numeric(14,2) not null default 0,
-  progress_count        integer not null default 0,
-  qualified_at          timestamptz,
-  last_evaluated_at     timestamptz,
-  evaluation_version    integer not null default 1,
-  metadata              jsonb not null default '{}'::jsonb,
+  target_amount         numeric(14,2),
+  currency              char(3),
+  lifecycle_status      text not null default 'draft' check (lifecycle_status in
+                        ('draft','active','ended','cancelled')),
+  progress_status       text not null default 'not_started' check (progress_status in
+                        ('not_started','in_progress','provisionally_qualified','target_reached',
+                         'shortfall','failed','expired','disputed','needs_review')),
+  qualification_status  text not null default 'unconfirmed' check (qualification_status in
+                        ('unconfirmed','user_confirmed','rejected','needs_review')),
+  progress_count_cache  integer not null default 0,
+  progress_amount_cache numeric(14,2) not null default 0,
+  pending_count_cache   integer not null default 0,
+  pending_amount_cache  numeric(14,2) not null default 0,
+  evidence_level        text not null default 'unknown' check (evidence_level in
+                        ('user_total','user_entries','user_official_evidence','unknown')),
+  reconciliation_status text not null default 'not_due' check (reconciliation_status in
+                        ('not_due','pending','reconciled','disputed')),
+  last_entry_sequence   bigint not null default 0,
+  last_rebuilt_at       timestamptz,
+  row_version           bigint not null default 0,
   created_at            timestamptz not null default now(),
   updated_at            timestamptz not null default now(),
-  archived_at           timestamptz,
-  unique (user_id, requirement_id, instance_key),
+  unique (id, user_id),
+  unique (id, user_id, card_id),
+  unique (user_id, card_id, activity_instance_key),
+  foreign key (card_id, user_id) references cards (id, user_id) on delete restrict,
+  foreign key (participation_id, user_id, card_id, activity_instance_key)
+    references activity_participations (id, user_id, card_id, activity_instance_key) on delete restrict,
+  foreign key (rule_version_id, user_id, rule_id)
+    references rule_versions (id, user_id, rule_id) on delete restrict,
+  foreign key (currency) references iso_4217_currencies (code),
   check (window_end >= window_start),
-  check (target_amount is null or target_amount >= 0),
   check (target_count is null or target_count >= 0),
-  check (progress_amount >= 0 and progress_count >= 0),
-  check (status <> 'qualified' or qualified_at is not null)
+  check (target_amount is null or target_amount >= 0),
+  check ((metric_type in ('count','count_and_amount','count_or_amount')) = (target_count is not null)),
+  check ((metric_type in ('amount','count_and_amount','count_or_amount')) = (target_amount is not null)),
+  check ((target_amount is null) = (currency is null))
 );
 
-create index spend_tasks_user_status_window_idx
-  on spend_tasks (user_id, status, window_end, window_start)
-  where archived_at is null;
-create index spend_tasks_campaign_idx on spend_tasks (campaign_id, status, window_end);
+create table spend_method_snapshots (
+  id                  uuid primary key default gen_random_uuid(),
+  user_id             uuid not null references users(id) on delete cascade,
+  task_id             uuid not null,
+  snapshot_key        text not null,
+  source_method_id    uuid,
+  channel_type        text not null,
+  merchant_scope      text,
+  region_scope        text,
+  currency_scope      char(3)[],
+  exclusions_text     text,
+  source_snapshot_id  uuid,
+  created_at          timestamptz not null default now(),
+  unique (id, task_id, user_id),
+  unique (task_id, snapshot_key),
+  foreign key (task_id, user_id) references spend_tasks (id, user_id) on delete restrict,
+  foreign key (source_snapshot_id, user_id)
+    references source_snapshots (id, user_id) on delete restrict
+);
 ```
 
-`progress_amount` 和 `progress_count` 是可重建的缓存，不是事实来源；计算必须聚合未撤销的 `activities`，在同一事务更新任务状态并写 outbox。重复型活动用不同 `instance_key`（例如 `2026-Q3`），避免用删除重建破坏审计。
+```sql
+create table spend_task_snapshots (
+  id                 uuid primary key default gen_random_uuid(),
+  user_id            uuid not null references users(id) on delete cascade,
+  task_id            uuid not null,
+  sequence           bigint not null check (sequence > 0),
+  confirmed_count    integer,
+  confirmed_amount  numeric(14,2),
+  evidence_note      text,
+  source_snapshot_id uuid,
+  business_key       text not null,
+  created_at         timestamptz not null default now(),
+  unique (id, task_id, user_id),
+  unique (task_id, sequence),
+  unique (task_id, business_key),
+  foreign key (task_id, user_id) references spend_tasks (id, user_id) on delete restrict,
+  foreign key (source_snapshot_id, user_id)
+    references source_snapshots (id, user_id) on delete restrict,
+  check (confirmed_count is not null or confirmed_amount is not null),
+  check (confirmed_count is null or confirmed_count >= 0),
+  check (confirmed_amount is null or confirmed_amount >= 0)
+);
+```
 
-### 3.4 权益定义、发放额度和价值记录
+`input_mode=snapshot` 时最多允许一个当前 snapshot 事实，`input_mode=entries` 时禁止写入 `spend_task_snapshots`；反向操作也拒绝。该互斥必须由事务内 trigger/存储过程或模式专属写入口强制，不能只靠服务层约定；缓存进度不得作为可写事实。
+
+`custom` 规则只保存说明且强制 `needs_review/user_confirmed`，P0 不执行表达式。模板编辑只影响未来任务；进行中任务迁移必须创建新 task/rule snapshot 或明确终结旧任务，不能覆盖 snapshot。
+
+### 5.2 不可变 SpendTaskEntry
+
+```sql
+create table spend_task_entries (
+  id                  uuid primary key default gen_random_uuid(),
+  user_id             uuid not null references users(id) on delete cascade,
+  task_id             uuid not null,
+  sequence            bigint not null check (sequence > 0),
+  business_key        text not null,
+  entry_type          text not null check (entry_type in
+                      ('contribution','refund','correction','reversal')),
+  related_entry_id    uuid,
+  occurred_on         date not null,
+  posted_on           date,
+  settled_on          date,
+  processing_status   text not null default 'occurred_only' check (processing_status in
+                      ('occurred_only','posted','settled','rejected','reversed','unknown')),
+  qualification_status text not null default 'unknown' check (qualification_status in
+                      ('included','excluded','pending','disputed','unknown')),
+  count_delta         integer not null default 0,
+  amount_delta        numeric(14,2) not null default 0,
+  currency            char(3),
+  method_snapshot_id  uuid,
+  evidence_status     text not null check (evidence_status in
+                      ('user_asserted','source_supported','needs_review','disputed')),
+  observed_count      integer,
+  observed_amount     numeric(14,2),
+  source_snapshot_id  uuid,
+  reason_code         text,
+  note                text,
+  created_at          timestamptz not null default now(),
+  unique (id, task_id, user_id),
+  unique (task_id, sequence),
+  unique (task_id, business_key),
+  foreign key (task_id, user_id) references spend_tasks (id, user_id) on delete restrict,
+  foreign key (related_entry_id, task_id, user_id)
+    references spend_task_entries (id, task_id, user_id) on delete restrict,
+  foreign key (method_snapshot_id, task_id, user_id)
+    references spend_method_snapshots (id, task_id, user_id) on delete restrict,
+  foreign key (source_snapshot_id, user_id)
+    references source_snapshots (id, user_id) on delete restrict,
+  foreign key (currency) references iso_4217_currencies (code),
+  check (count_delta <> 0 or amount_delta <> 0),
+  check ((amount_delta = 0) = (currency is null)),
+  check (entry_type <> 'contribution' or (count_delta >= 0 and amount_delta >= 0)),
+  check (entry_type <> 'refund' or (count_delta <= 0 and amount_delta <= 0)),
+  check (entry_type <> 'reversal' or related_entry_id is not null),
+  check (entry_type <> 'correction' or observed_count is not null or observed_amount is not null),
+  check (processing_status <> 'occurred_only' or posted_on is null),
+  check (processing_status not in ('posted','settled') or posted_on is not null),
+  check (qualification_status <> 'included' or processing_status in ('posted','settled','occurred_only')),
+  check (entry_type <> 'refund' or related_entry_id is not null
+         or (source_snapshot_id is not null and length(trim(coalesce(note,''))) > 0))
+);
+
+create unique index spend_task_one_reversal_per_entry
+  on spend_task_entries (task_id, related_entry_id)
+  where entry_type = 'reversal';
+```
+
+数据库触发器还需验证：entry 币种与 task 一致；method snapshot 属于 task；`reversal` 与目标 entry 的 count/amount/currency 完全相反；不允许形成引用环。退款可部分发生，使用稳定 `business_key` 防止同一退款重复导入。要恢复一个 reversal，只能新增 reversal-of-reversal。
+
+写入事务先 `select ... for update` 锁 task，分配 `sequence = last_entry_sequence + 1`，插入事实，再按全部 entry 或从水位增量重算缓存。进度允许小于零；负值不截断而将 `progress_status/qualification_status` 置为 `needs_review`。退款使 `target_reached` 回退时，事务必须同时写审计和 `SpendTaskTargetNoLongerReached` outbox 事件。缓存校验公式为：
+
+```text
+progress_count_cache  = sum(count_delta order by sequence)
+progress_amount_cache = sum(amount_delta order by sequence)
+last_entry_sequence   = max(sequence)
+```
+
+## 6. 权益发放、预约与使用流水
+
+权益定义通过 `rule_id` 关联版本；发放实例固定卡、版本和周期。业务唯一键在归档后也不复用：
 
 ```sql
 create table benefits (
-  id                    uuid primary key default gen_random_uuid(),
-  user_id               uuid not null references users(id) on delete cascade,
-  card_id               uuid not null references cards(id) on delete restrict,
-  campaign_id           uuid references card_campaigns(id) on delete restrict,
-  benefit_key           text not null check (length(trim(benefit_key)) between 1 and 120),
-  benefit_version       integer not null check (benefit_version > 0),
-  rule_version_id       uuid references rule_versions(id) on delete restrict,
-  name                  text not null check (length(trim(name)) between 1 and 160),
-  benefit_type           text not null check (benefit_type in ('credit', 'discount', 'access', 'insurance', 'points_bonus', 'other')),
-  status                text not null default 'active' check (status in ('draft', 'active', 'expired', 'archived')),
-  valid_from            date,
-  valid_to              date,
-  timezone              text not null default 'Asia/Shanghai',
-  usage_limit_count     integer,
-  usage_limit_amount    numeric(14,2),
-  estimated_value       numeric(14,2) not null default 0,
-  currency              char(3) not null default 'CNY',
-  valuation_method      text not null default 'manual' check (valuation_method in ('manual', 'source', 'formula')),
-  source_snapshot_id    uuid references source_snapshots(id) on delete restrict,
-  last_confirmed_at     timestamptz,
-  rule_json              jsonb not null default '{}'::jsonb,
-  notes                 text,
-  created_at            timestamptz not null default now(),
-  updated_at            timestamptz not null default now(),
-  archived_at           timestamptz,
-  unique (user_id, card_id, benefit_key, benefit_version),
-  check (valid_to is null or valid_from is null or valid_to >= valid_from),
-  check (usage_limit_count is null or usage_limit_count >= 0),
-  check (usage_limit_amount is null or usage_limit_amount >= 0),
-  check (estimated_value >= 0),
-  check (currency ~ '^[A-Z]{3}$')
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid not null references users(id) on delete cascade,
+  card_id       uuid not null,
+  rule_id       uuid not null,
+  benefit_key   text not null,
+  name          text not null,
+  benefit_type  text not null check (benefit_type in
+                ('count','credit','insurance','lounge','service','fee_waiver','other')),
+  usage_model   text not null default 'unknown' check (usage_model in
+                ('consumable_quota','coverage_claim','fee_credit','service_record','unknown')),
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now(),
+  archived_at   timestamptz,
+  unique (id, user_id),
+  unique (id, user_id, card_id),
+  unique (id, user_id, card_id, rule_id),
+  unique (user_id, card_id, benefit_key),
+  foreign key (card_id, user_id) references cards (id, user_id) on delete restrict,
+  foreign key (rule_id, user_id) references rules (id, user_id) on delete restrict
 );
 
-create index benefits_user_card_validity_idx
-  on benefits (user_id, card_id, valid_to, status)
-  where archived_at is null;
-
-create table entitlements (
-  id                    uuid primary key default gen_random_uuid(),
-  user_id               uuid not null references users(id) on delete cascade,
-  card_id               uuid not null references cards(id) on delete restrict,
-  benefit_id            uuid not null references benefits(id) on delete restrict,
-  grant_key             text not null,
-  rule_version_id       uuid references rule_versions(id) on delete restrict,
-  valid_from            date not null,
-  valid_to              date not null,
-  granted_count         integer,
-  granted_amount        numeric(14,2),
-  currency              char(3),
-  status                text not null default 'available'
-                        check (status in ('available', 'partially_used', 'exhausted', 'expired', 'cancelled')),
-  issued_at             timestamptz not null default now(),
-  exhausted_at          timestamptz,
-  metadata              jsonb not null default '{}'::jsonb,
-  created_at            timestamptz not null default now(),
-  updated_at            timestamptz not null default now(),
-  archived_at           timestamptz,
+create table benefit_entitlements (
+  id                     uuid primary key default gen_random_uuid(),
+  user_id                uuid not null references users(id) on delete cascade,
+  card_id                uuid not null,
+  benefit_id             uuid not null,
+  rule_id                uuid not null,
+  rule_version_id        uuid not null,
+  grant_key              text not null,
+  valid_from             date not null,
+  valid_to               date not null,
+  timezone               text not null,
+  status                 text not null default 'pending_delivery' check (status in
+                         ('pending_delivery','available','delivery_failed','suspended','expired','revoked','disputed','unknown')),
+  quota_status           text not null default 'not_applicable' check (quota_status in
+                         ('not_applicable','available','partially_used','exhausted','needs_review')),
+  granted_count_cache    integer not null default 0,
+  remaining_count_cache integer not null default 0,
+  granted_amount_cache   numeric(14,2) not null default 0,
+  remaining_amount_cache numeric(14,2) not null default 0,
+  currency               char(3),
+  last_entry_sequence    bigint not null default 0,
+  created_at             timestamptz not null default now(),
+  updated_at             timestamptz not null default now(),
+  unique (id, user_id),
+  unique (id, user_id, card_id),
   unique (user_id, benefit_id, grant_key),
-  check (valid_to >= valid_from),
-  check (granted_count is null or granted_count >= 0),
-  check (granted_amount is null or granted_amount >= 0),
-  check (currency is null or currency ~ '^[A-Z]{3}$'),
-  check (status <> 'exhausted' or exhausted_at is not null)
+  foreign key (benefit_id, user_id, card_id, rule_id)
+    references benefits (id, user_id, card_id, rule_id) on delete restrict,
+  foreign key (rule_version_id, user_id, rule_id)
+    references rule_versions (id, user_id, rule_id) on delete restrict,
+  foreign key (currency) references iso_4217_currencies (code),
+  check (valid_to >= valid_from)
 );
 
-create index entitlements_user_status_validity_idx
-  on entitlements (user_id, status, valid_to)
-  where archived_at is null;
-create index entitlements_benefit_idx on entitlements (benefit_id, valid_from desc);
+create table benefit_usages (
+  id                  uuid primary key default gen_random_uuid(),
+  user_id             uuid not null references users(id) on delete cascade,
+  card_id             uuid not null,
+  entitlement_id      uuid not null,
+  client_request_key  text not null,
+  request_hash        char(64) not null,
+  status              text not null check (status in
+                      ('planned','booked','used','rejected','cancelled','disputed')),
+  reservation_status  text not null default 'not_required' check (reservation_status in
+                      ('not_required','not_booked','requested','confirmed','rejected','cancelled','unknown')),
+  redemption_status   text not null default 'not_presented' check (redemption_status in
+                      ('not_presented','presented','redeemed','rejected','disputed','unknown')),
+  dispute_status      text not null default 'not_disputed' check (dispute_status in
+                      ('not_disputed','open','resolved_user','resolved_provider','unresolved')),
+  planned_on          date,
+  booked_at           timestamptz,
+  presented_at        timestamptz,
+  used_at             timestamptz,
+  redeemed_at         timestamptz,
+  dispute_opened_at   timestamptz,
+  reservation_reference_masked text,
+  requested_count     integer,
+  requested_amount    numeric(14,2),
+  actual_charge_amount numeric(14,2),
+  currency            char(3),
+  provider_or_location text,
+  rejection_reason    text,
+  row_version         bigint not null default 0,
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now(),
+  unique (id, user_id),
+  unique (id, entitlement_id, user_id),
+  unique (user_id, client_request_key),
+  foreign key (entitlement_id, user_id, card_id)
+    references benefit_entitlements (id, user_id, card_id) on delete restrict,
+  foreign key (currency) references iso_4217_currencies (code),
+  check (requested_count is null or requested_count >= 0),
+  check (requested_amount is null or requested_amount >= 0),
+  check (actual_charge_amount is null or actual_charge_amount >= 0),
+  check ((requested_amount is null and actual_charge_amount is null) = (currency is null)),
+  check (status <> 'booked' or booked_at is not null),
+  check (reservation_status <> 'confirmed' or booked_at is not null),
+  check (redemption_status <> 'presented' or presented_at is not null),
+  check (redemption_status <> 'redeemed' or redeemed_at is not null),
+  check (redemption_status <> 'redeemed' or status = 'used'),
+  check (status <> 'used' or redemption_status = 'redeemed'),
+  check (dispute_status = 'not_disputed' or dispute_opened_at is not null),
+  check (status <> 'disputed' or dispute_status <> 'not_disputed'),
+  check (reservation_reference_masked is null or length(reservation_reference_masked) between 1 and 128)
+);
 ```
 
-额度消耗不直接覆盖 `entitlements`。用 `value_records`（`value_type = 'benefit_use'`）或后续专用使用流水聚合，任务在事务中刷新 `status`。`estimated_value` 是用户记录/来源估算，不是收益承诺。
+```sql
+create table benefit_entitlement_ledger (
+  id                  uuid primary key default gen_random_uuid(),
+  user_id             uuid not null references users(id) on delete cascade,
+  entitlement_id      uuid not null,
+  sequence            bigint not null check (sequence > 0),
+  business_key        text not null,
+  entry_type          text not null check (entry_type in
+                      ('grant','consume','restore','expire','reversal')),
+  related_entry_id    uuid,
+  usage_id            uuid,
+  count_delta         integer not null default 0,
+  amount_delta        numeric(14,2) not null default 0,
+  currency            char(3),
+  source_snapshot_id  uuid,
+  occurred_at         timestamptz not null,
+  note                text,
+  created_at          timestamptz not null default now(),
+  unique (id, entitlement_id, user_id),
+  unique (entitlement_id, sequence),
+  unique (entitlement_id, business_key),
+  foreign key (entitlement_id, user_id)
+    references benefit_entitlements (id, user_id) on delete restrict,
+  foreign key (related_entry_id, entitlement_id, user_id)
+    references benefit_entitlement_ledger (id, entitlement_id, user_id) on delete restrict,
+  foreign key (usage_id, entitlement_id, user_id)
+    references benefit_usages (id, entitlement_id, user_id) on delete restrict,
+  foreign key (source_snapshot_id, user_id)
+    references source_snapshots (id, user_id) on delete restrict,
+  foreign key (currency) references iso_4217_currencies (code),
+  check (count_delta <> 0 or amount_delta <> 0),
+  check ((amount_delta = 0) = (currency is null)),
+  check (entry_type <> 'grant' or (count_delta >= 0 and amount_delta >= 0)),
+  check (entry_type in ('grant','restore') or (count_delta <= 0 and amount_delta <= 0)),
+  check (entry_type <> 'consume' or (usage_id is not null and count_delta <= 0 and amount_delta <= 0)),
+  check (entry_type not in ('restore','reversal') or related_entry_id is not null)
+);
 
-### 3.5 积分账户、流水和兑换
+create unique index benefit_ledger_one_restore_or_reversal_per_entry
+  on benefit_entitlement_ledger (entitlement_id, related_entry_id)
+  where entry_type in ('restore','reversal');
+```
+
+`benefit_entitlements.status` 是下发事实，`quota_status` 是额度派生投影；`exhausted` 不得作为下发状态写入。`benefit_usages.status` 仅保留兼容投影，API 不得直接写入，规范事实是 `reservation_status` 与 `redemption_status` 两条轴。booked 只表示预约事实，presented 只表示已出示，只有 redeemed 才表示实际核销。`usage_model=consumable_quota` 的 grant 增加额度，确认 redeemed 后以 `benefit_usage:{id}:consume` 扣减；planned/booked/rejected/cancelled/disputed 不扣额度。`coverage_claim`、`fee_credit` 和 `service_record` 不进入次数 consume 流程。新写入只允许 `grant/consume/restore/expire`，`reversal` 仅作为受控技术性精确反向事实；旧 `use/adjustment` 仅为兼容读映射。restore 必须精确反向既有 consume，usage 与 entitlement 必须属于同一实例。价值另写 value_records，绝不能反向充当额度事实源。
+
+数量和金额字段只接受非负值；金额字段存在时必须带 ISO 4217 币种，只有次数型使用才允许币种为空。预约取消、现场拒绝和未解决争议不得产生额度扣减。失败或取消不会自动生成恢复流水，只有用户确认实际核销后再以 reversal 修正既有扣减。
+
+余额缓存从 entitlement ledger 重建；remaining 小于零时保留原值并进入 `needs_review`。发放、使用、状态投影、审计和 outbox 在同一事务提交。
+
+## 7. 积分账户、到期 lot 与对账差额
+
+### 7.1 账户与唯一事实流水
 
 ```sql
 create table points_accounts (
-  id                    uuid primary key default gen_random_uuid(),
-  user_id               uuid not null references users(id) on delete cascade,
-  card_id               uuid references cards(id) on delete restrict,
-  program_code          text not null check (length(trim(program_code)) between 1 and 80),
-  program_name          text not null check (length(trim(program_name)) between 1 and 120),
-  unit_code             text not null check (unit_code ~ '^[A-Z0-9_]{2,32}$'),
-  points_scale          smallint not null default 4 check (points_scale between 0 and 4),
-  account_label         text,
-  member_ref_hash       char(64) check (member_ref_hash is null or member_ref_hash ~ '^[0-9a-f]{64}$'),
-  balance_cache         numeric(20,4) not null default 0,
-  balance_as_of         timestamptz,
-  status                text not null default 'active' check (status in ('active', 'suspended', 'archived')),
-  metadata              jsonb not null default '{}'::jsonb,
-  created_at            timestamptz not null default now(),
-  updated_at            timestamptz not null default now(),
-  archived_at           timestamptz,
-  unique (user_id, program_code, unit_code),
-  check (balance_cache >= 0)
+  id                       uuid primary key default gen_random_uuid(),
+  user_id                  uuid not null references users(id) on delete cascade,
+  card_id                  uuid,
+  account_key              text not null,
+  program_code             text not null,
+  program_name             text not null,
+  unit_code                text not null check (unit_code ~ '^[A-Z0-9_]{2,32}$'),
+  points_scale             smallint not null default 0 check (points_scale between 0 and 4),
+  expiry_model             text not null default 'unknown' check (expiry_model in
+                           ('none','fixed_date','rolling','lot_based','unknown')),
+  consumption_order        text not null default 'unknown' check (consumption_order in
+                           ('earliest_expiry_first','issuer_defined','user_selected','unknown')),
+  balance_cache            numeric(20,4) not null default 0,
+  confirmed_balance_cache  numeric(20,4),
+  allocated_balance_cache  numeric(20,4) not null default 0,
+  unallocated_balance_cache numeric(20,4) not null default 0,
+  reconciliation_difference_cache numeric(20,4),
+  last_ledger_sequence     bigint not null default 0,
+  last_allocation_sequence bigint not null default 0,
+  balance_as_of            timestamptz,
+  reconciliation_status    text not null default 'pending' check (reconciliation_status in
+                           ('balanced','mismatch','pending','unknown')),
+  status                   text not null default 'active' check (status in
+                           ('active','frozen','closed','needs_review','archived')),
+  created_at               timestamptz not null default now(),
+  updated_at               timestamptz not null default now(),
+  archived_at              timestamptz,
+  unique (id, user_id),
+  unique (id, user_id, card_id),
+  unique (user_id, account_key),
+  foreign key (card_id, user_id) references cards (id, user_id) on delete restrict,
+  check (unallocated_balance_cache = balance_cache - allocated_balance_cache),
+  check (reconciliation_difference_cache is null or confirmed_balance_cache is not null),
+  check (reconciliation_difference_cache is null or reconciliation_difference_cache = confirmed_balance_cache - balance_cache)
 );
-
-create index points_accounts_user_status_idx
-  on points_accounts (user_id, status, program_name)
-  where archived_at is null;
 
 create table points_ledger (
-  id                    uuid primary key default gen_random_uuid(),
-  user_id               uuid not null references users(id) on delete cascade,
-  account_id            uuid not null references points_accounts(id) on delete restrict,
-  entry_type            text not null
-                        check (entry_type in ('earn', 'bonus', 'expire', 'redeem', 'adjustment', 'reversal')),
-  points_delta          numeric(20,4) not null check (points_delta <> 0),
-  unit_code             text not null check (unit_code ~ '^[A-Z0-9_]{2,32}$'),
-  occurred_at           timestamptz not null,
-  source_type           text not null check (source_type in ('manual', 'activity', 'redemption', 'import', 'system')),
-  source_id             uuid,
-  idempotency_key       text not null,
-  source_snapshot_id    uuid references source_snapshots(id) on delete restrict,
-  note                  text,
-  metadata              jsonb not null default '{}'::jsonb,
-  created_at            timestamptz not null default now(),
-  unique (user_id, account_id, idempotency_key)
+  id                  uuid primary key default gen_random_uuid(),
+  user_id             uuid not null references users(id) on delete cascade,
+  account_id          uuid not null,
+  sequence            bigint not null check (sequence > 0),
+  business_key        text not null,
+  request_hash        char(64) not null check (request_hash ~ '^[0-9a-f]{64}$'),
+  entry_type          text not null check (entry_type in
+                      ('earn','adjustment','expire','redeem_debit','reversal')),
+  points_delta        numeric(20,4) not null check (points_delta <> 0),
+  related_entry_id    uuid,
+  occurred_at         timestamptz not null,
+  posted_on           date,
+  source_kind         text not null check (source_kind in
+                      ('manual','activity','redemption','import','system')),
+  adjustment_reason   text,
+  source_snapshot_id  uuid,
+  note                text,
+  created_at          timestamptz not null default now(),
+  unique (id, account_id, user_id),
+  unique (account_id, sequence),
+  unique (account_id, business_key),
+  foreign key (account_id, user_id) references points_accounts (id, user_id) on delete restrict,
+  foreign key (related_entry_id, account_id, user_id)
+    references points_ledger (id, account_id, user_id) on delete restrict,
+  foreign key (source_snapshot_id, user_id)
+    references source_snapshots (id, user_id) on delete restrict,
+  check (entry_type <> 'reversal' or related_entry_id is not null),
+  check (entry_type not in ('redeem_debit','expire') or points_delta < 0),
+  check (entry_type not in ('earn','adjustment') or points_delta <> 0),
+  check (entry_type <> 'adjustment' or adjustment_reason is not null)
 );
 
-create index points_ledger_account_time_idx
-  on points_ledger (account_id, occurred_at desc, id desc);
-create index points_ledger_user_type_time_idx
-  on points_ledger (user_id, entry_type, occurred_at desc);
+create unique index points_ledger_one_reversal_per_entry
+  on points_ledger (account_id, related_entry_id) where entry_type = 'reversal';
+```
 
+`balance_cache` 允许为负：用户可能已经在银行完成兑换，而本地历史不完整。禁止用 `greatest(balance, 0)` 隐藏差异；负余额将账户置为 `needs_review`。写入在锁定账户后分配 sequence，触发器校验精度、reversal 精确反向、账户单位和不可变性。相同 business key 若 `request_hash` 不同必须返回 `409 IDEMPOTENCY_CONFLICT`。
+
+`account_key` 是用户范围内的稳定账户命名空间：同一积分计划按卡分账与合并池必须使用不同 key；不能依赖可空 `card_id` 和 `(user_id, program_code, unit_code)` 的唯一性来表达两种语义。
+
+### 7.2 PointsLot、分配与未分配差额
+
+```sql
+create table points_lots (
+  id                  uuid primary key default gen_random_uuid(),
+  user_id             uuid not null references users(id) on delete cascade,
+  account_id          uuid not null,
+  lot_key             text not null,
+  earned_on           date,
+  expires_on          date,
+  expiry_basis        text not null check (expiry_basis in ('fixed','rolling','activity_specific','unknown')),
+  expiry_confidence   text not null check (expiry_confidence in ('official','user_input','inferred','unknown')),
+  usage_restriction_text text,
+  remaining_cache     numeric(20,4) not null default 0,
+  status              text not null check (status in
+                      ('open','partially_used','used','expired','void','disputed')),
+  created_at          timestamptz not null default now(),
+  unique (id, account_id, user_id),
+  unique (account_id, lot_key),
+  foreign key (account_id, user_id) references points_accounts (id, user_id) on delete restrict,
+  check (expires_on is null or earned_on is null or expires_on >= earned_on)
+);
+
+create table points_lot_allocations (
+  id                uuid primary key default gen_random_uuid(),
+  user_id           uuid not null references users(id) on delete cascade,
+  account_id        uuid not null,
+  allocation_sequence bigint not null check (allocation_sequence > 0),
+  ledger_entry_id   uuid not null,
+  lot_id            uuid not null,
+  allocated_delta   numeric(20,4) not null check (allocated_delta <> 0),
+  created_at        timestamptz not null default now(),
+  unique (ledger_entry_id, lot_id),
+  unique (account_id, allocation_sequence),
+  foreign key (ledger_entry_id, account_id, user_id)
+    references points_ledger (id, account_id, user_id) on delete restrict,
+  foreign key (lot_id, account_id, user_id)
+    references points_lots (id, account_id, user_id) on delete restrict
+);
+```
+
+lot allocation 是事实的一部分，禁止更新/删除；更正通过新 ledger entry 和对应 allocation。`allocation_sequence` 与 points ledger 的账户 sequence 分离，因此一条 earn/redeem/expire 流水可以拆分到多个 lot。deferred constraint trigger 在事务结束时验证每条 ledger 的 allocation 合计与流水同号且绝对值不超过流水绝对值，并验证 lot remaining 等于 allocation 合计。未分配差额不是额外可写余额，而是：
+
+```text
+account.balance       = sum(points_ledger.points_delta)
+lot.remaining(lot)    = sum(points_lot_allocations.allocated_delta for lot)
+allocated_balance     = sum(all lots' remaining)
+unallocated_balance   = account.balance - allocated_balance
+```
+
+P1-b 只接受用户指定 lot 或保留未分配差额；即使 `consumption_order` 有值，也只给建议，不自动跨用途限制分摊。到期 worker 对明确 `expires_on` 的剩余额度只生成去重 Reminder；用户基于明确来源确认后，才新增 `expire` ledger 及负 allocation。自动写入 expire 属于 P2，不直接改 `remaining_cache`。
+
+### 7.3 余额核对与调整流水
+
+```sql
+create table points_reconciliations (
+  id                  uuid primary key default gen_random_uuid(),
+  user_id             uuid not null references users(id) on delete cascade,
+  account_id          uuid not null,
+  client_request_key  text not null,
+  request_hash        char(64) not null check (request_hash ~ '^[0-9a-f]{64}$'),
+  observed_balance    numeric(20,4) not null,
+  ledger_balance_before numeric(20,4) not null,
+  adjustment_delta    numeric(20,4) not null,
+  balance_as_of       timestamptz not null,
+  source_snapshot_id  uuid,
+  adjustment_entry_id uuid,
+  note                text,
+  created_at          timestamptz not null default now(),
+  unique (user_id, client_request_key),
+  unique (adjustment_entry_id),
+  foreign key (account_id, user_id) references points_accounts (id, user_id) on delete restrict,
+  foreign key (adjustment_entry_id, account_id, user_id)
+    references points_ledger (id, account_id, user_id) on delete restrict,
+  foreign key (source_snapshot_id, user_id)
+    references source_snapshots (id, user_id) on delete restrict,
+  check (adjustment_delta = observed_balance - ledger_balance_before),
+  check ((adjustment_delta = 0) = (adjustment_entry_id is null))
+);
+```
+
+用户录入余额必须转换成 `adjustment` 且 `adjustment_reason=reconciliation`；不存在 `PATCH balance`。若差额为零，只写 reconciliation/audit，不制造零流水。调整默认不分配 lot，因此 `unallocated_difference` 体现在未分配投影，直至用户补充批次。`reconciliation_difference = confirmed_balance - ledger_balance` 与 `unallocated_difference = ledger_balance - lots_remaining_total` 必须分别展示。
+
+## 8. 兑换幂等、并发扣减与失败退款
+
+```sql
 create table redemptions (
   id                    uuid primary key default gen_random_uuid(),
   user_id               uuid not null references users(id) on delete cascade,
-  card_id               uuid references cards(id) on delete restrict,
-  account_id            uuid not null references points_accounts(id) on delete restrict,
-  benefit_id            uuid references benefits(id) on delete restrict,
-  entitlement_id        uuid references entitlements(id) on delete restrict,
-  rule_version_id       uuid references rule_versions(id) on delete restrict,
+  account_id            uuid not null,
+  card_id               uuid,
+  rule_id               uuid,
+  rule_version_id       uuid,
   client_request_key    text not null,
-  reward_code           text not null check (length(trim(reward_code)) between 1 and 120),
-  status                text not null default 'requested'
-                        check (status in ('requested', 'reserved', 'processing', 'confirmed', 'failed', 'cancelled', 'reversed')),
-  points_requested      numeric(20,4) not null check (points_requested > 0),
-  points_spent          numeric(20,4),
-  reward_value          numeric(14,2),
-  reward_currency       char(3),
-  requested_at          timestamptz not null default now(),
-  processed_at          timestamptz,
-  external_ref          text,
-  failure_code          text,
-  metadata              jsonb not null default '{}'::jsonb,
+  request_hash          char(64) not null check (request_hash ~ '^[0-9a-f]{64}$'),
+  catalog_name          text,
+  item_name             text not null,
+  channel               text,
+  external_ref_masked   text,
+  external_ref_hash     char(64),
+  required_points       numeric(20,4) not null check (required_points >= 0),
+  cash_component_amount numeric(14,2),
+  currency              char(3),
+  order_status          text not null default 'planned' check (order_status in
+                        ('planned','submitted','accepted','rejected','cancelled','unknown')),
+  fulfillment_status    text not null default 'not_started' check (fulfillment_status in
+                        ('not_started','processing','fulfilled','failed','cancelled','unknown')),
+  points_debit_status   text not null default 'not_debited' check (points_debit_status in
+                        ('not_debited','pending_debit','posted','needs_review')),
+  refund_status         text not null default 'not_applicable' check (refund_status in
+                        ('not_applicable','not_requested','pending_external_confirmation','confirmed_external','posted','needs_review')),
+  review_status         text not null default 'clear' check (review_status in
+                        ('clear','needs_review','disputed')),
+  requested_on          date,
+  accepted_at           timestamptz,
+  succeeded_at          timestamptz,
+  fulfilled_at          timestamptz,
+  refund_expected_on    date,
+  failure_reason        text,
+  row_version           bigint not null default 0,
   created_at            timestamptz not null default now(),
   updated_at            timestamptz not null default now(),
-  check (points_spent is null or points_spent > 0),
-  check (reward_value is null or reward_value >= 0),
-  check (reward_currency is null or reward_currency ~ '^[A-Z]{3}$'),
-  check (status not in ('confirmed', 'reversed') or (points_spent is not null and processed_at is not null)),
-  unique (user_id, client_request_key)
+  unique (id, user_id),
+  unique (id, account_id, user_id),
+  unique (user_id, client_request_key),
+  foreign key (account_id, user_id) references points_accounts (id, user_id) on delete restrict,
+  foreign key (account_id, user_id, card_id)
+    references points_accounts (id, user_id, card_id) on delete restrict,
+  foreign key (card_id, user_id) references cards (id, user_id) on delete restrict,
+  foreign key (rule_version_id, user_id, rule_id)
+    references rule_versions (id, user_id, rule_id) on delete restrict,
+  foreign key (currency) references iso_4217_currencies (code),
+  check ((cash_component_amount is null) = (currency is null)),
+  check ((external_ref_masked is null) = (external_ref_hash is null)),
+  check (external_ref_masked is null or length(external_ref_masked) between 1 and 128),
+  check (external_ref_hash is null or external_ref_hash ~ '^[0-9a-f]{64}$'),
+  check ((rule_id is null) = (rule_version_id is null)),
+  check (cash_component_amount is null or cash_component_amount >= 0),
+  check (order_status <> 'accepted' or accepted_at is not null),
+  check (fulfillment_status <> 'fulfilled' or fulfilled_at is not null)
 );
 
-create index redemptions_user_status_time_idx
-  on redemptions (user_id, status, requested_at desc);
-create index redemptions_account_time_idx on redemptions (account_id, requested_at desc);
-```
+create unique index redemptions_external_ref_unique
+  on redemptions (user_id, account_id, channel, external_ref_hash)
+  where external_ref_hash is not null;
 
-`points_ledger` 是不可变事实，数据库运行角色不授予该表 `update/delete` 权限；冲正插入相反方向的 `reversal`，不更新或删除原流水。`balance_cache` 只作读优化，定期以 `sum(points_delta)` 校正。兑换预留不提前写积分流水：事务 `select ... for update` 锁住 `points_accounts`，计算已记账余额减去 `reserved/processing` 兑换，再创建一条 `reserved` 订单；确认时在同一事务更新订单并插入负的 `redeem` 流水。失败/取消释放预留；超时由幂等 worker 处理。这样不会因并发兑换产生负可用余额。
-
-### 3.6 价值流水
-
-```sql
-create table value_records (
-  id                    uuid primary key default gen_random_uuid(),
-  user_id               uuid not null references users(id) on delete cascade,
-  card_id               uuid not null references cards(id) on delete restrict,
-  benefit_id            uuid references benefits(id) on delete restrict,
-  entitlement_id        uuid references entitlements(id) on delete restrict,
-  redemption_id         uuid references redemptions(id) on delete restrict,
-  value_type            text not null
-                        check (value_type in ('estimated', 'realized', 'fee', 'cost', 'benefit_use', 'refund', 'adjustment')),
-  direction             text not null check (direction in ('credit', 'debit')),
-  amount                numeric(14,2) not null check (amount >= 0),
-  currency              char(3) not null check (currency ~ '^[A-Z]{3}$'),
-  occurred_on           date not null,
-  valuation_method      text not null default 'manual'
-                        check (valuation_method in ('manual', 'source', 'formula')),
-  source_snapshot_id    uuid references source_snapshots(id) on delete restrict,
-  record_key            text,
-  note                  text,
-  metadata              jsonb not null default '{}'::jsonb,
-  created_at            timestamptz not null default now(),
-  updated_at            timestamptz not null default now(),
-  voided_at             timestamptz,
-  check (benefit_id is not null or entitlement_id is not null or redemption_id is not null or card_id is not null)
+create table redemption_ledger_links (
+  redemption_id  uuid not null,
+  account_id     uuid not null,
+  user_id        uuid not null,
+  ledger_entry_id uuid not null,
+  link_role      text not null check (link_role in ('debit','refund')),
+  created_at     timestamptz not null default now(),
+  primary key (redemption_id, link_role),
+  unique (ledger_entry_id),
+  foreign key (redemption_id, account_id, user_id)
+    references redemptions (id, account_id, user_id) on delete restrict,
+  foreign key (ledger_entry_id, account_id, user_id)
+    references points_ledger (id, account_id, user_id) on delete restrict
 );
-
-create unique index value_records_key_unique
-  on value_records (user_id, record_key)
-  where record_key is not null and voided_at is null;
-create index value_records_user_card_date_idx
-  on value_records (user_id, card_id, occurred_on desc)
-  where voided_at is null;
-create index value_records_benefit_idx
-  on value_records (benefit_id, occurred_on desc)
-  where benefit_id is not null and voided_at is null;
 ```
 
-报表将 `credit` 聚合为正、`debit` 聚合为负；同一记录不能隐式换算币种。若需要统一报表币种，应在记录中另存经确认的 `base_amount`、`base_currency` 和 `fx_rate`（均结构化），并保留原始金额，不把汇率塞进不透明 JSON。
+`redemptions.card_id` 的可空性不能由 PostgreSQL 复合 FK 的 NULL 语义放行。受控 transition function/deferred trigger 必须强制：`points_accounts.card_id is not null` 时 redemption.card_id 必须非空且相等；只有 `points_accounts.card_id is null` 的合并池允许 redemption.card_id 为空，且不允许任意卡挂接。账户产生首条 ledger 后禁止改变 card scope；固定卡缺卡、错卡、合并池带卡和跨用户引用均返回 404/409 并写审计。
 
-### 3.7 事务事件（建议）
+P1-b 是“记录用户已在外部渠道执行的兑换”，不做 reservation；订单受理、外部履约、本地扣分和退分是四个底层事实轴：
 
-现有 `audit_logs` 负责审计，不适合作为可靠消息队列。若 worker 或未来通知需要跨进程消费，增加事务 outbox：
+1. `record_order_result` 以 `row_version` 更新 `order_status=accepted|rejected|cancelled|unknown`，同事务写审计和结果事件；`record_fulfillment` 单独更新履约轴。重复命令按 `client_request_key + request_hash` 返回原结果。
+2. ledger consumer 锁 `points_accounts`，以固定业务键 `redemption:{id}:debit` 插入 `-required_points`，写 debit link，刷新账户/lot 缓存，再把 `points_debit_status` 设为 `posted`。并发 worker 只能命中同一唯一键。
+3. 若本地余额不足但用户确认银行已成功，仍记真实 debit，允许余额为负并将 account/redemption 标为 `needs_review`；不得伪造为零或把成功改成失败。
+4. `failed/cancelled` 在 debit 前不写积分流水。若技术失败，outbox 重试；若请求字段与既有业务键不一致，进入死信并报警，不创建第二条流水。
+5. `record_refund` 先把 `refund_status` 置为 `pending_external_confirmation`；只有已存在且状态为 `posted` 的 debit link，并且用户提供官方退分证据时，consumer 才能锁账户，以 `redemption:{id}:refund` 插入与 debit 完全相反的流水及 lot allocation，再设 `refund_status=posted`。退款先于扣分、重复退款和金额不符均拒绝并留审计。
 
-```sql
-create table workbench_outbox_events (
-  id                    uuid primary key default gen_random_uuid(),
-  user_id               uuid references users(id) on delete set null,
-  aggregate_type        text not null,
-  aggregate_id          uuid not null,
-  event_type            text not null,
-  event_version         integer not null default 1 check (event_version > 0),
-  idempotency_key       text not null,
-  payload               jsonb not null,
-  occurred_at           timestamptz not null default now(),
-  published_at          timestamptz,
-  attempt_count         integer not null default 0 check (attempt_count >= 0),
-  last_error             text,
-  unique (aggregate_type, aggregate_id, event_type, event_version, idempotency_key)
-);
+允许的状态边由数据库 transition trigger 或唯一存储过程校验，禁止任意 PATCH。订单、履约、积分扣分和退分各自只沿本轴合法转换；状态变更、outbox 与本聚合写入同一事务；账本消费是最终一致，页面必须显示 `points_debit_status`、`refund_status` 和 `as_of`，在 debit posted 或 refund posted 前不能宣称余额已对账。
 
-create index workbench_outbox_pending_idx
-  on workbench_outbox_events (occurred_at, id)
-  where published_at is null;
-create index workbench_outbox_user_idx
-  on workbench_outbox_events (user_id, occurred_at desc);
-```
+## 9. 事实源、缓存与重建
 
-活动写入、任务重算、兑换状态变更、积分流水、`audit_logs` 和 outbox 必须在同一个数据库事务中提交。发布 worker 采用 `for update skip locked`、成功后设置 `published_at`，失败递增 `attempt_count` 并指数退避；业务方按 `idempotency_key` 幂等消费。
+| 展示值 | 唯一事实源 | 可写缓存 | 重建/异常策略 |
+| --- | --- | --- | --- |
+| 活动报名/资格 | participation events + 用户确认审计 | participation 五轴状态 | 按 sequence 重放；规则变化只标 needs_review |
+| 任务进度 | `spend_task_entries` | count/amount/status/last sequence | 全量或水位增量重放；负数不截断 |
+| 权益剩余额度 | entitlement ledger | granted/remaining/status/last sequence | grant/use/reversal 重放；超用标 needs_review |
+| 积分账面余额 | `points_ledger` | balance/last sequence | `sum(points_delta)`；允许负数并告警 |
+| lot 剩余/未分配 | ledger + lot allocations | lot remaining/allocated/unallocated | 重算后必须满足账户恒等式 |
+| 兑换扣点/退款 | redemption 四轴 + ledger link | points_debit_status/refund_status | 固定业务键对账，缺 link 或金额不符即 needs_review |
+| 收益/价值 | 独立 `value_records` | 报表投影 | 不参与权益额度或积分余额计算 |
 
-## 4. 结构化字段与 JSON 边界
+缓存刷新与事实写入属于同一数据库事务时，失败应整体回滚。异步消费者更新的跨聚合缓存携带 source sequence；旧事件不得覆盖新水位。每日校验任务只报告/重建缓存并写审计，不能改事实流水。
 
-必须结构化并约束的字段：`user_id`、所有主外键、版本号、状态、有效期/发生日期、时区、金额与币种、积分单位与增量、兑换请求幂等键、来源哈希、审计时间、软删除时间。它们承担授权、唯一性、范围检查、排序和聚合，禁止放入 JSON。
+## 10. 审计、索引与运行权限
 
-适合 JSONB 的字段：银行条款中尚未稳定的渠道/商户分类、活动展示文案、多语言文案、解析器原始字段、公式参数、外部响应中非敏感的扩展属性和版本迁移信息。JSONB 必须有顶层 schema/version（例如 `rule_json.schema_version`），限制大小并在应用层验证；不可把完整卡号、凭据、认证头、原始账单或未经脱敏的 PDF 文本写入其中。需要查询的 JSON 键应在确认稳定后提升为列，再删除旧 JSON 键（expand/contract）。
+- 高频索引至少包括 participation `(user_id, outcome_status)`、task `(user_id, lifecycle_status, window_end)`、entitlement `(user_id, status, valid_to)`、points ledger `(account_id, sequence)`、lot `(account_id, expires_on) where status in ('open','partially_used')`、redemption `(user_id, order_status, created_at desc)` 和 outbox pending partial index。
+- append-only 表撤销应用角色的 `update/delete`；通过 `security definer` 函数写入时固定 `search_path` 并核对调用角色。管理员修复也必须追加 correction/reversal，不开放临时直改。
+- 所有 JSONB 带顶层 `schema_version`，限制文档大小；参与授权、金额、状态、去重和日期范围的字段不得藏入 JSON。
+- outbox 使用 `(aggregate_type, aggregate_id, event_type, business_key)` 唯一键，worker 以 `for update skip locked` 领取；consumer 另建 inbox `(consumer_name, event_id)` 唯一键。审计表不能替代 outbox。
+- RLS 策略、复合外键和 API ownership 测试三者都保留；任何一层通过都不能证明另外两层正确。
 
-Drizzle 对应写法沿用现有 schema，例如：
+## 11. 迁移顺序与回滚边界
 
-```ts
-numeric("points_delta", { precision: 20, scale: 4 }).notNull(),
-numeric("amount", { precision: 14, scale: 2 }).notNull(),
-timestamp("occurred_at", { withTimezone: true, mode: "date" }).notNull(),
-jsonb("metadata").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
-```
+本轮不创建迁移。未来实施按以下顺序拆分，不能把整份草案作为一条生产迁移：
 
-状态枚举继续用 `text(...).notNull()` 配合 `check(sql\`... in (...)\`)`，不要在应用类型中允许任意字符串；可另导出 TypeScript union 供服务层校验。
+1. **预检与备份基线**：确认 PostgreSQL 15、`btree_gist` 权限、`set_updated_at()`、RLS/worker 角色；记录全库逻辑备份、PITR 时间点、表计数、现有孤儿和重复键。
+2. **所有权前置**：清理现有跨用户/孤儿引用；增加父表 `(id,user_id)`/`(id,user_id,card_id)` 唯一索引，再以 `not valid` 添加复合外键并离峰 `validate constraint`。
+3. **来源与规则**：先建 reference/snapshot/rule/version/citation、不可变触发器和生效期约束；没有 primary snapshot 的规则不得激活。
+4. **活动与任务**：建 campaign/participation/event、task/method snapshot/entry；双写后对旧 progress 做 contribution/correction 映射，先比对重放结果再切读。
+5. **权益**：建 benefit/entitlement/usage/ledger；从现有使用记录回填稳定 business key，校验发放与剩余恒等式。
+6. **积分与 lot**：先建 account/ledger 和 sequence，再回填 reconciliation adjustment；随后建 lot/allocation 和未分配差额。禁止直接把旧 balance 当成 earn lot。
+7. **兑换**：最后切换新状态和 ledger link；先冻结旧 worker，逐单对账成功/失败/退款，再启用幂等 consumer。
+8. **约束收紧**：数据核验通过后设 not null、启用 RLS/append-only 权限、并发创建大表索引。观察期结束后才 contract；事实表和业务键不做降级删除。
 
-## 5. 所有权、审计和一致性约束
+应用回滚以关闭 feature flag、停止 consumer、恢复旧读路径为主，不回写或删除已产生的新事实。若账本异常，先冻结相关命令，保留数据库现场，从 ledger 重建缓存并补 correction/reversal。只有无法逻辑修复的全库灾难才使用 PITR；PITR 后必须重放外部已确认但恢复点之后发生的兑换/退款，避免数据库恢复成功却重复扣点。
 
-1. **用户隔离**：所有读写 API 从认证会话取得 `user_id`；SQL 必须带 `where id = $id and user_id = $user_id`。创建子对象时先锁定父对象并核对父对象 `user_id`。生产启用 RLS 时，事务开始 `set local app.user_id = '...'`，后台任务使用单独角色。
-2. **跨表一致性**：`card_campaigns.card_id`、`activities.card_id`、`spend_tasks.card_id`、`benefits.card_id`、`points_accounts.card_id` 和 `redemptions.card_id` 必须属于同一用户。第一阶段用服务层事务校验；第二阶段为每个父表增加 `unique(id,user_id)`，再加 `(id,user_id)` 复合外键。
-3. **规则快照**：活动定义被引用后只能新建 `rule_versions` 行；权益定义被引用后只能递增 `benefit_version` 新建行。任务、权益额度和活动事实记录引用明确版本，不能通过更新父行改变历史结论。
-4. **金额与点数**：所有非负金额/目标/数量由 check 约束；积分流水允许正负但不得为零，单位必须匹配账户。余额和任务进度是可重建缓存，定期校验聚合结果并记录 `audit_logs`。
-5. **幂等**：导入活动用 `(user_id,campaign_id,external_key)`；积分流水用 `(user_id,account_id,idempotency_key)`；兑换用 `(user_id,client_request_key)`；outbox 使用自身唯一键。重复请求使用 `on conflict do nothing` 或返回原记录。
-6. **审计**：创建/修改/归档活动规则、任务状态、权益发放、兑换状态、积分调整、价值记录、来源替换、导出和账户删除均写现有 `audit_logs`。`metadata` 只能包含脱敏差异和 request id，不记录密码、完整卡号或原始请求体。
-7. **软删除**：规则定义和快照用 `archived_at`/`status`；一般事实用 `voided_at`，积分流水只用反向流水。任何物理删除仅随账户清理事务进行，并按现有保留期和备份过期策略处理。
+## 12. 备份、恢复与数据删除
 
-## 6. 关键事务流程
+- 生产要求加密全量备份 + WAL/PITR，跨故障域保存；RPO/RTO 由产品/运维签字后写入运行手册，未确定前不得声称满足灾备目标。
+- 至少每季度恢复到隔离环境，验证 schema/migration 版本、用户/卡/参与实例计数、`sum(points_ledger)`、lot 恒等式、兑换 ledger link、附件对象 hash 和 RLS。只验证“备份任务成功”不算恢复演练。
+- 恢复演练使用脱敏或受控数据，密钥恢复流程必须一并演练；备份、对象存储和数据库的保留期一致。
+- 用户删除采用可重试清理清单，先撤销投递/worker，再删对象存储和业务行，最后匿名化或删除允许处理的审计标识。备份中的数据在保留期内不可选择性擦除，必须在隐私说明中披露并阻止其回灌为在线数据。
+- 每次迁移前记录可恢复时间点；恢复后运行第 13 节全部账本/一致性检查，再开放写流量。
 
-### 6.1 活动/任务
+## 13. 数据库验收检查
 
-```sql
-begin;
-select id, user_id from card_campaigns
-  where id = $campaign_id and user_id = $user_id for update;
-insert into activities (...) values (...)
-  on conflict (user_id, campaign_id, external_key) do nothing;
--- 聚合未 void 的 activities，更新 spend_tasks 缓存和 status
-insert into audit_logs (...) values (...);
-insert into workbench_outbox_events (...) values (...);
-commit;
-```
+至少以下检查全部自动化；标注“并发”的用 PostgreSQL 集成测试而非 mock：
 
-活动事实已经落库但任务重算失败时，整笔事务回滚；定时校正任务可从事实重建缓存。
+1. **跨用户/跨卡拒绝**：用户 A 不能把用户 B 的 card、snapshot、rule version、account、lot 或 entitlement 关联到自己的行；同用户不同卡的 participation/task/benefit 交叉引用也被复合外键拒绝。
+2. **活动实例唯一与正交状态**：同一 `(user,campaign,card)` 并发创建只成功一条；`potentially_eligible` 不自动改变 enrollment/outcome，奖励确认必须有确认时间。
+3. **规则证据与区间**：无 primary citation 不能激活；同一 rule 的 active 生效期重叠失败；修改/删除已激活 version 或 snapshot 失败，旧任务仍读取旧 hash。
+4. **刷卡重算与冲正**：contribution 达标后追加 refund 可退回 `in_progress` 并把已确认资格设为 `needs_review`；重复 business key、第二条 reversal、非精确 reversal、跨 task method snapshot 均失败。
+5. **累计 correction 幂等**：相同累计录入重试不新增 entry；不同 request hash 使用同 key 返回冲突；从零重放的 count/amount/sequence 与缓存完全一致。
+6. **权益发放/使用**：重复 grant/use 业务键不重复增减；booked/rejected/cancelled 不扣额度；used 后 reversal 恢复额度；并发使用导致超额时只允许一个成功，或明确落 `needs_review` 而不丢事实。
+7. **积分精度与账户序号（并发）**：超出 `points_scale` 的流水失败；并发追加得到连续且唯一 sequence；相同业务键相同摘要返回原记录，不同摘要冲突。
+8. **lot 与未分配恒等式**：earn、部分 redeem、expire、reversal 和 reconciliation adjustment 后，逐 lot remaining、allocated balance、unallocated balance 与全账本公式一致；跨账户 allocation 失败。
+9. **兑换重复事件（并发）**：重复 HTTP、两个 debit worker 和事件重放最终只有一个 debit link/ledger entry；订单金额或账户不同但复用 key 时进入冲突，不能多扣。
+10. **失败与退款**：failed/cancelled 无 debit；success 后 refund 只产生一个等额反向 entry；退款先于 debit、重复退款或金额不等均失败并留审计。余额不足的外部成功兑换保留负余额且标 `needs_review`。
+11. **币种/时区边界**：非法 ISO 币种和 IANA 时区失败；UTC 跨日、夏令时切换、闰日及 inclusive 截止日得到固定 local date，规则/任务时区后续变化不改历史。
+12. **软删除与权限**：归档定义后业务键不能复用；普通角色不能 update/delete snapshot 或任一 ledger；归档卡不生成新实例，但历史、审计和重建仍可读。
+13. **缓存损坏恢复**：人工在隔离库篡改所有 cache 后执行重建，任务、权益、积分和 lot 缓存恢复一致；旧 sequence 事件不能覆盖新缓存。
+14. **备份恢复**：从全量备份 + WAL 恢复到指定时间点后，上述计数、hash、账本合计、lot 恒等式、兑换 link、RLS 和对象引用全部通过。
 
-### 6.2 权益发放和使用
+## 14. P0/P1 数据库边界
 
-在活动达标事务内创建 `entitlements`，唯一键冲突即返回已有额度。使用权益时插入 `value_records(value_type='benefit_use')`，锁定额度行并依据流水聚合判断是否变为 `partially_used/exhausted`；过期 worker 只把仍可用的额度标为 `expired`，不删除使用记录。
-
-### 6.3 积分兑换
-
-1. `select ... for update` 锁定 `points_accounts`；计算 `sum(points_ledger.points_delta)` 和未终结兑换的 `points_requested`。
-2. 可用点数足够时插入 `redemptions(status='reserved')`，写审计和 outbox，提交。
-3. 外部兑换成功时锁账户，在同一事务将订单设为 `confirmed`，插入负 `points_ledger(entry_type='redeem')`，并可创建 `value_records`。
-4. 失败/取消只更新订单并释放预留；超时任务按 `requested_at` 和重试上限处理。冲正新建 `reversal` 流水并将订单设为 `reversed`。
-
-任何步骤重试都使用客户端请求键和流水幂等键；绝不先扣积分再创建订单，也不允许客户端直接写 `balance_cache`。
-
-## 7. 迁移阶段、验证和回滚
-
-采用与现有轻量迁移兼容的 expand/contract，新增表和索引不改动 MVP 表：
-
-| 阶段 | 变更 | 验证/回滚 |
+| 能力 | P0 必须落库的硬约束 | P1 扩展边界 |
 | --- | --- | --- |
-| 0. 预检 | 在临时 PostgreSQL 15 执行草案 DDL，检查扩展、权限、锁和磁盘 | `db:smoke`、`db:verify`、约束负例测试；失败直接丢弃临时库 |
-| 1. Expand | 创建 `source_snapshots`、活动/权益/积分/兑换/价值/outbox 表及非唯一索引；全部新列可空或有安全默认 | 校验表、索引、check、外键；应用未读新表时可逐表 `drop table` 回滚 |
-| 2. 双写/回填 | 仅在业务代码上线后双写活动事实、任务缓存和审计；按批回填来源哈希、规则版本、积分流水 | 对每个用户比较原始输入与聚合余额/进度，抽样校验跨用户拒绝；停止双写并删除回填数据可回滚 |
-| 3. Contract | 验证通过后将必要列设为 `not null`，启用复合外键/RLS，稳定 JSON 键提升为列；大表索引使用 `create index concurrently` | 先在影子库演练；约束冲突时保留兼容列，撤销 RLS/约束并修复数据，不直接删列 |
-| 4. 清理 | 旧读路径切换完成且观察窗口结束后，才删除临时兼容字段或旧缓存 | 删除前备份 schema 与计数；保留反向迁移脚本和 PITR 时间点 |
+| 来源/规则 | snapshot 不可变、primary citation、生效区间不重叠、历史实例固定 version | 版本对比、受控导入；仍只新增 snapshot/version |
+| 活动/任务 | participation 五轴状态、任务内 method snapshot、append-only entry、退款/冲正重放 | 导入 preview/confirm、更多模板；不得让 connector 直写缓存 |
+| 权益 | grant/use/reversal ledger，预约不扣额度，使用幂等 | 附件和筛选；附件不是发放/使用事实源 |
+| 积分 | sequence ledger、reconciliation adjustment、用户指定 lot、未分配差额 | 根据明确 `consumption_order` 给分配建议；用户确认后才写 allocation |
+| 兑换 | 外部手工结果、成功 debit、失败不扣、整单退款、幂等 consumer | 若增加系统内 reservation，使用独立 hold/release 流水和到期状态机；不得复用 P1-b `pending` 假装预留 |
+| 导入/自动化 | 只有用户确认后的结构化事实可写业务表 | parser/inbox 可重试且版本化；原始敏感内容不进入 JSON/审计 |
 
-建议迁移拆分为：`workbench_01_sources`、`workbench_02_campaigns`、`workbench_03_benefits`、`workbench_04_points_redemptions`、`workbench_05_value_outbox`；这些只是命名建议，不代表已创建文件。DDL 应避免在事务中执行 `create index concurrently`，并为每个索引记录执行计划和耗时。
+P1 只能增加新的事实类型、建议或导入来源，不能把 P0 的缓存提升为事实，也不能放宽复合外键、不可变、幂等和审计约束。部分退款、跨账户积分转移和系统内兑换需要单独设计双边守恒与状态机，不因标记为 P1 就默认已有模型支持。
 
-回滚原则：新增表优先通过停止写入、禁用消费者、恢复到上一个应用版本处理；不要在有引用数据时级联删除。若积分或兑换出现不一致，冻结兑换 worker，以 `sum(points_ledger)` 重建 `balance_cache`，以订单状态和审计日志重放 outbox；PITR 只作为最后手段。规则版本和流水不可通过“回滚更新”覆盖，必须用反向版本或冲正流水。
+## 15. 未决项与上线门槛
 
-## 8. 验证清单和迁移风险
+- `iso_4217_currencies` 是项目自管参考表还是依赖应用常量，需在首个迁移前决定；无论选择哪种，都必须有数据库可执行的有效币种校验。
+- PostgreSQL 托管环境是否允许 `btree_gist` 尚未确认；不允许时采用锁父 rule 的 constraint trigger，并补等价并发测试。
+- PRD 尚未给出 RPO、RTO、备份保留期、对象存储区域和用户删除等待期；这些是上线阻断项，不在数据库稿中猜数值。
+- 多卡联合活动的贡献归属、积分转移的双边账户原子性、自动 lot 分摊、系统内 reservation 和部分兑换退款均超出 P0；加入前需扩展事实模型和验收，不得塞进 JSON 绕过约束。
+- `custom` 条件只存文本并要求用户确认；在规则 DSL、版本兼容和安全评审完成前不在数据库执行任意表达式。
 
-- DDL 语法在 PostgreSQL 15+ 临时库通过，Drizzle `numeric/timestamp/jsonb` 类型与现有 schema 一致。
-- 负金额、零积分、错误状态终态、无目标的 `spend_amount/spend_count`、跨用户父子引用和重复幂等键均有失败测试。
-- 活动有效期边界、用户时区跨日、夏令时、闰年和窗口包含端点有单元测试；来源快照替换后历史活动结果不变。
-- 并发兑换、worker 重试、outbox 重复消费、任务重算和积分余额校正有事务/集成测试。
-- 归档卡片不生成新活动任务或权益，但历史活动、额度、兑换和审计可读；账户删除后业务数据按现有清理流程处理。
+上线最低门槛：复合外键/RLS/IDOR 测试通过；规则快照不可变与生效期测试通过；任务、权益、积分全量重放等于缓存；并发兑换与退款幂等通过；敏感数据扫描通过；实际备份恢复演练通过。
 
-主要风险是规则 JSON 未定义 schema、跨表 `user_id` 仅靠服务层校验、积分预留超时、来源快照含敏感原文、以及把缓存余额当作事实。上线门槛应是：敏感数据扫描通过、跨用户访问测试通过、积分流水重建与订单对账通过、备份恢复演练完成，并明确每个规则版本的来源和最后确认时间。
+## 16. 第三轮 DBA 角色复核整合
 
-## 9. 第二轮领域边界审查
+本轮数据研究确认当前真实数据库仍只有年费 MVP 表，活动、权益、积分、兑换、来源快照、outbox/inbox 均尚未进入迁移。因此本文件的新增约束是实施前置，不代表代码已经支持这些领域。
 
-- **活动与刷卡任务**：活动身份、不可变规则版本、结构化条件、执行任务和事实活动分层成立。活动不直接持有“完成度”，任务缓存也不能反向修改事实；同一笔消费可以由规则引擎匹配多个任务，但 `external_key` 只能在同一活动范围内去重，避免误吞跨活动匹配。
-- **权益**：`benefits` 表达规则定义，`entitlements` 表达周期发放额度，`value_records` 表达使用和价值。权益使用不等同于消费活动；若业务需要关联，可由 `activities.source_id`/扩展关联表显式连接，不把两类事实合成一行。
-- **积分**：账户只定义积分计划和读缓存，`points_ledger` 才是余额事实。活动获得积分、权益赠分和兑换扣分都必须各自产生有幂等键的流水；对账差异使用 `adjustment`/`reversal`，禁止覆盖余额或历史流水。
-- **兑换**：兑换是独立订单状态机，不是积分流水的别名。`reserved/processing` 影响可用余额但不改变账面余额，只有 `confirmed` 才插入扣减流水；失败、取消和冲正的语义因此可审计且可重试。
-- **来源与价值**：来源快照是所有规则版本的证据，不是规则本身；价值流水只记录用户输入或有来源的算术结果，不承担权益额度和积分余额。以上边界避免把会变化的规则、用户事实、聚合缓存和估值混在同一表中。
+必须在第一条工作台迁移前落实：
+
+1. 复合所有权与 RLS/IDOR 测试；不能只依赖应用层过滤。
+2. 活动参与状态与奖励轴分离；`reward_received` 不再混入 `outcome_status`。
+3. 权益 usage 到 entitlement 的三列复合外键；预约/拒绝/争议不写 use ledger。
+4. `PointsAccount.account_key` 区分按卡账户与合并池；`allocation_sequence` 允许一笔流水拆分多个 lot；正/负未分配差额必须可重放。
+5. 兑换退款必须已有 `posted` debit link；订单成功、扣分处理和退分结果分别记录，失败不猜测退分。
+6. 旧 `progress_entries` 通过 adapter 进入新任务事实，缺失 occurred/posted/settled 或 business key 的历史记录标记 `needs_review`，不得伪造银行入账事实。
+
+详见 [CARD-DOMAIN-DATA-REVIEW.md](research/CARD-DOMAIN-DATA-REVIEW.md)，其中包含 15 类数据库验收案例、expand/contract 顺序和回滚边界。本轮不创建真实迁移。
+
+## 17. 第四轮提醒与状态契约收敛
+
+P0 提醒必须在现有 `reminders` 上做 expand/contract，不能只由首页查询临时计算。若采用新表，最低结构如下；若复用现有表，必须等价增加字段、约束和索引：
+
+```sql
+create table workbench_reminders (
+  id             uuid primary key default gen_random_uuid(),
+  user_id        uuid not null references users(id) on delete cascade,
+  object_type    text not null check (object_type in
+                 ('fee_event','campaign','participation','activity_reward','spend_task','source_rule','benefit','points_lot','redemption')),
+  object_id      uuid not null,
+  reminder_type  text not null check (reminder_type in
+                 ('annual_fee','activity_end','task_due','reward_verification','verification_due','benefit_expiry','points_expiry','redemption_followup')),
+  trigger_at     timestamptz not null,
+  timezone       text not null,
+  status         text not null default 'pending' check (status in
+                 ('pending','snoozed','completed','ignored','overdue','cancelled')),
+  delivery_status text not null default 'ready' check (delivery_status in
+                  ('ready','leased','delivered','retrying','dead_lettered')),
+  dedupe_key     text not null,
+  source_sequence bigint,
+  attempt_count  integer not null default 0 check (attempt_count >= 0),
+  next_attempt_at timestamptz,
+  lease_owner    text,
+  lease_expires_at timestamptz,
+  last_attempt_at timestamptz,
+  last_error_code text,
+  dead_lettered_at timestamptz,
+  snoozed_until  timestamptz,
+  completed_at   timestamptz,
+  ignored_at     timestamptz,
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now(),
+  unique (id, user_id),
+  unique (user_id, dedupe_key),
+  check (status <> 'snoozed' or snoozed_until is not null),
+  check (status <> 'completed' or completed_at is not null),
+  check (status <> 'ignored' or ignored_at is not null)
+  ,check (delivery_status <> 'leased' or lease_expires_at is not null)
+  ,check (delivery_status <> 'dead_lettered' or dead_lettered_at is not null)
+);
+
+create index workbench_reminders_due_idx
+  on workbench_reminders (user_id, status, trigger_at);
+create index workbench_reminders_object_idx
+  on workbench_reminders (user_id, object_type, object_id);
+create index workbench_reminders_delivery_idx
+  on workbench_reminders (user_id, delivery_status, next_attempt_at, trigger_at);
+```
+
+`timezone` 必须是 PostgreSQL/IANA 可识别值，`trigger_at` 存 UTC；worker 使用 `FOR UPDATE SKIP LOCKED` 和 `lease_owner/lease_expires_at` 领取，失败递增 `attempt_count` 并保留稳定的脱敏 `last_error_code`，达到上限转 `dead_lettered`。重复生成命中同一 `dedupe_key`。归档卡、取消任务和已确认奖励停止未来提醒但保留历史。`reward_verification` 只有奖励有明确 `expected_on` 或用户设置核对节点时才创建，不能因抓取或 `target_reached` 自动宣称到账。
+
+本轮同步的 canonical 约束为：ActivityParticipation 五轴（资格/报名/名额/结果/奖励）；Benefit 下发状态与 quota 投影分离，Usage 的 `status` 只作兼容投影；SpendTask 使用 `progress_status`，Participation 的 `outcome_status` 只作参与结果投影；PointsEntry 使用 `earn/adjustment/expire/redeem_debit/reversal`，`transfer` 延后 P2；Redemption 使用 `order_status`、`fulfillment_status`、`points_debit_status`、`refund_status` 四个底层事实轴，旧 `status/ledger_status/fulfilled/debited/returned/pending_refund/refunded` 只读映射。
+
+以上仍是迁移前契约。真实 PostgreSQL、RLS/复合 FK、提醒 worker、并发重放、账本重建、删除和恢复演练通过前，不能宣称工作台模块可部署。
+
+## 第五轮账本与迁移收敛（2026-08-14）
+
+第五轮 DBA/架构复核将以下约束视为实现前必须冻结的数据库契约：
+
+- `SpendMilestone` 独立于 `spend_task_entries`，以 `(entry_id, milestone_kind, business_key)` 去重；`settled` 必须先有 `posted`，退款/冲正只能追加反向事实。
+- `PointsEntry`、`PointsLotAllocation`、权益额度流水和兑换关联均 append-only；普通应用角色无 `UPDATE/DELETE`。账户余额、批次剩余、额度剩余和提醒状态都是可重放投影。
+- 积分账户同时保存 observation、ledger、lot allocation 和两个差额；正的未分配差额不自动造 lot，负差额进入 `mismatch/needs_review` 并阻止新的自动建议。P1 到期只建 Reminder，不自动写 `expire`。
+- `Redemption` 必须保留订单、履约、扣分和退分四个底层事实轴；`redemption:{id}:debit` 与 `redemption:{id}:refund` 是独立幂等业务键，退款必须引用已 posted debit。
+- 所有父子引用使用复合 ownership/FK 或等价事务校验；提醒以冻结 IANA 时区 + UTC `trigger_at` + 稳定 `dedupe_key` 落库，worker 用 lease/`SKIP LOCKED`，重跑不重复生成。
+
+迁移按 `expand -> backfill/adapter -> shadow replay -> verify -> switch -> contract` 执行：先保留年费 `progress_entries` 兼容读，确认旧事实可无损映射后再切换新聚合；每阶段必须有回滚、PITR 恢复和账本从零重建证据。未完成前不创建正式迁移文件。
+
+详细字段、索引和恢复门槛见 [第五轮数据复核](research/CARD-DOMAIN-FOLLOWUP-DATA.md)。
+
+## 第六轮扩展账本与迁移收敛（2026-08-14）
+
+第六轮 DBA、产品和架构复核将以下内容冻结为后续实现的数据库契约；本节不代表已创建 migration 或已通过真实 PostgreSQL 演练。
+
+1. **活动与刷卡事实**：`activity_participations` 以用户、活动、卡片和周期实例建立复合唯一范围；奖励按 `reward_key` 分组件。`spend_tasks` 的 `snapshot/entries` 互斥，`spend_entries` 保存发生事实，`spend_milestones` 保存 posted/settled/rejected，退款/冲正必须以关联反向行守恒。
+2. **权益账本**：`usage_model=consumable_quota` 才允许 `grant/consume/restore/expire`；预约、出示、拒绝、争议和 `coverage_claim/fee_credit` 不写次数 consume。consume/restore 使用稳定业务键并保留真实负余额，不能截断为零。
+3. **积分对账**：`points_entries` append-only，`ledger_balance=sum(points_delta)`；批次分配独立存储，`unallocated_difference=ledger_balance-lots_remaining_total`，外部观察差额为 `reconciliation_difference=confirmed_balance-ledger_balance`。未知批次不生成到期提醒或自动 expire/lot。
+4. **兑换与所有权**：订单、履约、扣分和退分关联事实分开；只有已 posted debit 且具备外部退回证据才可写等额 reversal。所有父子引用使用复合 owner/card/account FK 或等价事务校验，跨用户/不兼容跨卡统一拒绝。
+5. **横切约束**：所有写命令持久化 request hash 和幂等结果；outbox/inbox、ledger、lot allocation、reminder 均按业务键去重，提醒冻结 IANA 时区并以 UTC `trigger_at` 落库。expand/contract 期间保留旧年费 adapter、shadow replay、PITR 恢复点和可重建投影。
+
+字段、CHECK/UNIQUE/FK、索引、账本恒等式、Stage 0--6 迁移与 14 条数据库验收见 [第六轮 DBA 复核](research/CARD-DOMAIN-ROUND6-DATA.md)。在影子库迁移、并发/重放、RLS/IDOR、备份恢复和删除演练完成前，工作台数据模型不得被解释为可部署实现。
+
+## 第七轮 Gate 0 DDL 硬化（2026-08-14）
+
+Round7 DBA/架构复核将第六轮的文字约束进一步落到以下实现前硬门槛：
+
+- `activity_rewards` 只做当前投影；奖励状态必须通过 `activity_reward_events` 的 sequence、business_key、request_hash 和复合 owner FK 追加，普通角色不得 PATCH 主表状态。
+- `spend_tasks.input_mode` 激活后不可变；`snapshot` 只能有一个 `spend_task_snapshots`，`entries` 模式禁止 snapshot，互斥由 deferred trigger/受控存储过程和并发测试保证。`SpendMilestone` 的 canonical 路径是 `/api/v1/spend-entries/{entryId}/milestones`，旧 task-entry 路径只读兼容并标 deprecated。
+- Reminder 持久化 `delivery_status`、`attempt_count`、`next_attempt_at`、lease、`last_error_code` 和 dead-letter 时间；worker 租约过期可回收，死信重放复用原 reminder/event id，不生成新业务事实。
+- Benefit 新写枚举为 `grant/consume/restore/expire`，`reversal` 只作为受控技术性精确反向事实；旧 `use/adjustment` 仅兼容读映射。非 `consumable_quota` 禁止 consume。
+- Redemption 固定卡与 merged pool 通过 scope trigger 强制：固定卡账户必须提供同卡 redemption，合并池才允许 NULL card；四轴状态和 debit/refund link 必须幂等可重放。
+
+Round7 12 条数据库验收、复合约束、Reminder lease/dead-letter、RLS、PITR 和删除恢复门槛见 [第七轮 DBA 复核](research/CARD-DOMAIN-ROUND7-DATA.md)；架构 API/事件与 Gate 0--3 见 [第七轮架构复核](research/CARD-DOMAIN-ROUND7-ARCHITECTURE.md)。这些是实施前契约，不代表已有 migration 或可部署能力。
+
+## 18. 第九轮卡领域数据整合（2026-08-15）
+
+本轮把卡活动、卡权益、刷卡方式、积分账户和积分兑换的新增需求落到以下数据库门槛；不创建迁移，不代表当前数据库已具备这些表。
+
+### 18.1 事实与投影边界
+
+- 活动拆为 `campaigns`、`activity_participations` 和 `activity_reward_components`；`(user_id, campaign_id, card_id, activity_instance_key)` 唯一，奖励组件不得直接插入积分/权益流水。
+- `spend_method_snapshots` 在任务激活时冻结渠道、商户/MCC、地区、币种、附属卡和排除项；`spend_entries` 只追加发生事实，`spend_milestones` 追加 posted/settled/rejected；任务级 `input_mode` 对 `snapshot` 与 `entries` 加互斥约束。
+- `benefit_usages` 通过 `(benefit_id, user_id)` 复合外键绑定权益；预约、出示、拒绝和争议不能写 consume ledger，只有首次次数型 redeemed 可写入唯一业务键的 consume。
+- `points_observations`、`points_entries`、`points_lots` 和 `lot_allocations` 分表；`reconciliation_difference` 与 `unallocated_difference` 分开计算，真实负值保留并标记 `needs_review`，不得补零或造 lot。
+- `redemptions` 的订单、履约、扣分和退分状态分列；refund reversal 必须引用已 `posted` 的 debit 和官方证据，订单失败/取消不能自动写流水。
+
+### 18.2 约束与迁移门槛
+
+1. 所有新表带 `user_id`，父子外键使用 `(id, user_id)`；跨卡/跨账户引用在数据库约束和服务层同时校验。
+2. append-only 事实表拒绝普通 `UPDATE/DELETE`；修正、退款、恢复和对账只允许关联 reversal/adjustment，保留原记录。
+3. 规则、方法快照、来源快照和兑换请求保存 `content_hash/request_hash`；业务自然键和幂等键唯一，重放不产生第二事实。
+4. 到期提醒索引只覆盖明确 `expires_on/trigger_at` 且对象不是 `unknown/needs_review` 的行；未知日期不得进入 worker 队列。
+5. 刷卡金额、积分和现金部分使用精确 numeric + currency/unit；禁止浮点、隐式汇率或把不同积分单位相加。
+
+迁移顺序固定为：`Stage 0` 清理年费表跨用户引用并建立约束测试；`Stage 1` 来源/规则/活动参与与奖励；`Stage 2` SpendMethodSnapshot、SpendEntry、milestone 和任务重算；`Stage 3` 权益下发/使用账本；`Stage 4` 积分观察、lot、allocation 和兑换四轴；`Stage 5` 旧 adapter 只读切换、全量重建、备份恢复和删除清理演练。任一阶段失败只回退读路由，禁止 canonical 与旧表双向写入。
+
+详细字段、索引和验证见 [Round9 数据复核](research/CARD-DOMAIN-ROUND9-DATA.md)。在真实 PostgreSQL、RLS、并发重放、PITR 和回滚证据完成前，不得把本数据模型当作部署完成。
+
+## 19. 第十轮数据与恢复增量（2026-08-15）
+
+第十轮 DBA 研究见 [CARD-FEATURE-ROUND10-DATA.md](research/CARD-FEATURE-ROUND10-DATA.md)。本节将产品新增的报名尝试、规则新鲜度、跨任务消费防双算和分项履约落到数据库发布门；不创建正式 migration。
+
+### 19.1 Canonical 写入围栏
+
+| 领域 | Canonical 写模型 | 兼容读取 | 新写入禁止 |
+| --- | --- | --- | --- |
+| 活动报名 | `activity_enrollment_attempts` + event sequence | 旧 `ActivityEnrollment`/`CardActivity` view | 旧报名表、单一 `status` 或覆盖式重试 |
+| 刷卡 | `SpendEntry` + `SpendMilestone`；未来 `SpendFact` + `SpendTaskEvaluation` | 旧 task-entry、entry 上的 posted/settled 投影 | 同一消费复制金额到多个 task；在关联模型未通过 Gate 0 前拒绝第二次复制录入 |
+| 权益 | `BenefitUsage` events + quota ledger | 旧 `redeemed/use` 投影 | 非次数权益写 consume，预约/拒绝/争议扣额度 |
+| 积分/兑换 | observation、append-only PointsEntry/Lot/Allocation、订单/履约/debit/refund 四轴 | 旧 balance/success/fulfilled 字段 | 客户端 PATCH balance、单一兑换状态、失败自动退分 |
+
+兼容映射必须保存 `legacy_source`、`legacy_id`、`backfill_run_id`、原始 row hash、`mapping_status` 和冲突原因。canonical 写权限开启后，旧路由只能读取投影；同 hash 重放原映射，异 hash 进入 conflict queue，不覆盖事实。
+
+### 19.2 增量表和约束
+
+1. **报名尝试**：`activity_enrollment_attempts` 使用 `(user_id, participation_id, attempt_no)` 唯一；保存 `idempotency_key/request_hash`、外部渠道、提交/结果时间、掩码回执 hash、失败原因和 retryable 标记。截止后禁止新提交，重试必须新增 attempt，不能 UPDATE 旧结果。
+2. **规则新鲜度**：RuleVersion/SourceSnapshot 保存 `last_verified_at`、有效区间、摘要 hash 和用户 freshness policy 的评估结果；报名、任务激活、兑换预检命令必须在同一事务检查阈值。未知或过期只写计划/线索，不写确定资格、进度或扣分。
+3. **跨任务防双算**：P0 单任务 `SpendEntry` 保持现状；若开放同一消费服务多个任务，新增不可变 `spend_facts` 和 `spend_task_evaluations`，以 `(user_id, spend_fact_id, task_id, task_instance_key)` 唯一，并通过复合 FK 校验卡/币种/规则快照。evaluation 可各自为 included/excluded/pending/disputed，但金额原事实只存一次。
+4. **部分履约**：`redemption_fulfillment_lines` 以 `(user_id, redemption_id, line_key)` 唯一；`fulfilled + rejected + cancelled <= requested`，每次状态追加 evidence snapshot 和 request hash。debit/refund link 必须同 account/card scope，refund 累计不得超过已 posted debit。
+5. **投影水位**：统一 `projection_checkpoints` 或等价域表，至少保存 `projection_name`、aggregate、`source_sequence`、`source_watermark`、`rebuild_run_id`、status、错误和尝试次数；水位单调，重建在隔离表完成校验后原子切换，不能以空投影覆盖线上值。
+6. **精度/区间冻结**：Gate 0 统一金额精度、积分 `points_scale`、ISO 4217 币种和 IANA timezone；RuleVersion 使用半开生效区间，业务活动/任务窗口使用约定的 inclusive date。禁止同一字段在不同表混用 `[]` 与 `[)` 或隐式浮点/汇率。
+
+### 19.3 迁移与恢复顺序
+
+`Stage 0` 扫描现有年费跨 owner/card/cycle 引用、重复周期、可变 progress 和旧 reminder key，建立计数/hash/orphan 报告与 PITR 恢复点；`Stage 1` 建来源/规则、幂等、outbox/inbox、projection checkpoint 和 append-only 权限；`Stage 2` 建 P0 活动/报名尝试/SpendTask/Milestone/Reminder 与单向年费 adapter；`Stage 3` 建 P1-a 权益周期/usage/quota；`Stage 4` 建 P1-b Points observation/lot/allocation；`Stage 5` 建兑换四轴/履约分项；`Stage 6` 关闭旧写、完成 shadow replay、备份恢复、删除清理和 contract。
+
+每一阶段失败只能停用 feature flag、切回旧读路由或重放 canonical，不能恢复双向写入或级联删除事实。投影重建必须固定 source watermark；PITR 后外部 debit/refund/cancel 事件按原业务键重放，不能生成第二条事实。用户删除按清理注册表从 lease/提醒、对象存储、业务叶子到主体标识执行，事实/审计保留并支持恢复校验。
+
+### 19.4 数据库发布门
+
+- **Gate 0（当前阻断）**：签收 canonical/legacy 写围栏、报名 attempt、跨任务消费策略、投影 watermark/backfill fence、金额/积分精度和 RuleVersion 区间；D-01--D-08、D-15--D-16 必须在真实 PostgreSQL 通过。
+- **Gate 1/P0（当前阻断）**：活动、单卡任务、里程碑、退款、奖励组件和 Reminder 通过复合 FK/RLS、append-only、并发、shadow replay 和年费回归；P0 未通过前不开放新写入口。
+- **Gate 2/P1-a（当前阻断）**：D-09--D-10 的权益周期、凭证轮换、重复核销、restore、删除和恢复通过后才开启权益 flag。
+- **Gate 3/P1-b（当前阻断）**：D-11--D-14 的积分双差额、负余额、批次、分项履约、debit/refund 幂等与 PITR 通过后才开启积分/兑换 flag。
+
+完整 D-01--D-16 验收、观测指标和年费回归影响见第十轮 DBA 研究稿。当前代码和数据库没有新领域 schema、migration、worker 或真实测试，因此当前可部署范围仍只有年费 MVP。

@@ -120,13 +120,19 @@ describe("card schedule sync", () => {
       fixture.events,
       fixture.reminders,
       fixture.auth,
+      fixture.cycles,
     );
 
     expect(restored.status).toBe("active");
     const all = await fixture.reminders.list(fixture.user.id, false);
-    const cardReminders = all.filter((reminder) => reminder.cardId === fixture.card.id);
-    expect(cardReminders).toHaveLength(3);
-    expect(cardReminders.every((reminder) => reminder.status === "pending")).toBe(true);
+    const restoredReminders = all.filter(
+      (reminder) => reminder.cardId === fixture.card.id && reminder.feeEventId === fixture.event.id,
+    );
+    expect(restoredReminders).toHaveLength(3);
+    expect(restoredReminders.every((reminder) => reminder.status === "pending")).toBe(true);
+    expect(new Set(restoredReminders.map((reminder) => reminder.daysBefore))).toEqual(
+      new Set([30, 7, 1]),
+    );
   });
 
   it("updates card status, currency, notes and progress period", async () => {

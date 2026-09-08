@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cardfolio · 工作台科技感 V2 原型</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --canvas: #0b1118;
+        --canvas-raised: #0e1721;
+        --surface: #111b25;
+        --surface-raised: #172330;
+        --surface-hover: #1c2b39;
+        --chrome: rgba(12, 20, 29, .82);
+        --line: rgba(150, 180, 202, .17);
+        --line-strong: rgba(170, 202, 220, .31);
+        --text: #edf5f8;
+        --text-secondary: #a9bac5;
+        --text-tertiary: #718694;
+        --accent: #54d6e8;
+        --accent-strong: #1da8c0;
+        --accent-soft: rgba(84, 214, 232, .13);
+        --success: #55d39a;
+        --warning: #f2bd68;
+        --danger: #ff817c;
+        --info: #91b9ff;
+        --shadow: 0 18px 44px rgba(0, 0, 0, .25);
+        --ease-out: cubic-bezier(.23, 1, .32, 1);
+        --ease-drawer: cubic-bezier(.32, .72, 0, 1);
+      }
+      [data-theme="light"] {
+        color-scheme: light;
+        --canvas: #f4f6f8;
+        --canvas-raised: #eef2f5;
+        --surface: #ffffff;
+        --surface-raised: #f1f5f7;
+        --surface-hover: #e8eef2;
+        --chrome: rgba(248, 250, 252, .84);
+        --line: rgba(43, 64, 77, .15);
+        --line-strong: rgba(43, 64, 77, .3);
+        --text: #16222b;
+        --text-secondary: #50616d;
+        --text-tertiary: #74838d;
+        --accent: #087f9d;
+        --accent-strong: #05627a;
+        --accent-soft: rgba(8, 127, 157, .1);
+        --success: #167548;
+        --warning: #a35c00;
+        --danger: #b83232;
+        --info: #3f6fae;
+        --shadow: 0 16px 42px rgba(31, 55, 70, .12);
+      }
+      * { box-sizing: border-box; }
+      html { scrollbar-width: none; }
+      html::-webkit-scrollbar { width: 0; height: 0; }
+      body { margin: 0; min-width: 320px; background: var(--canvas); color: var(--text); font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; font-variant-numeric: tabular-nums; letter-spacing: 0; }
+      button, input { font: inherit; color: inherit; }
+      button { cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+      button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      .app { min-height: 100vh; display: grid; grid-template-columns: 244px minmax(0, 1fr); overflow-x: hidden; background: var(--canvas); }
+      .sidebar { position: sticky; top: 0; z-index: 10; height: 100vh; display: flex; flex-direction: column; padding: 24px 14px 16px; background: var(--chrome); border-right: 1px solid var(--line); backdrop-filter: blur(20px) saturate(135%); -webkit-backdrop-filter: blur(20px) saturate(135%); }
+      .brand { display: flex; align-items: center; gap: 10px; padding: 3px 10px 24px; border-bottom: 1px solid var(--line); }
+      .brand-mark { width: 31px; height: 31px; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent); border-radius: 8px; color: var(--accent); background: var(--accent-soft); font-weight: 800; box-shadow: 0 0 20px color-mix(in srgb, var(--accent) 14%, transparent); }
+      .brand strong { display: block; font-size: 16px; letter-spacing: .01em; }
+      .brand small { display: block; color: var(--text-tertiary); font-size: 10px; margin-top: 1px; }
+      .nav { display: grid; gap: 4px; padding-top: 21px; }
+      .nav button { width: 100%; min-height: 42px; border: 1px solid transparent; border-radius: 7px; padding: 0 11px; display: flex; align-items: center; gap: 10px; text-align: left; background: transparent; color: var(--text-secondary); transition: background-color 160ms var(--ease-out), color 160ms var(--ease-out), border-color 160ms var(--ease-out), transform 120ms ease-out; }
+      .nav button:hover { background: color-mix(in srgb, var(--info) 8%, transparent); color: var(--text); border-color: var(--line); }
+      .nav button:active, .icon-button:active, .action:active, .row-action:active { transform: scale(.98); }
+      .nav button.active { color: var(--text); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 28%, transparent); box-shadow: inset 2px 0 var(--accent); }
+      .nav-icon { width: 20px; color: var(--text-tertiary); text-align: center; font-size: 15px; }
+      .nav button.active .nav-icon { color: var(--accent); }
+      .badge { margin-left: auto; min-width: 20px; height: 20px; display: grid; place-items: center; padding: 0 5px; border-radius: 10px; background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); font-size: 10px; }
+      .sidebar-foot { margin-top: auto; padding: 14px 10px 0; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 9px; color: var(--text-secondary); }
+      .avatar { width: 30px; height: 30px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 50%; background: color-mix(in srgb, var(--info) 42%, var(--surface)); color: var(--text); font-weight: 700; }
+      .sidebar-foot strong { display: block; font-size: 12px; color: var(--text); }
+      .sidebar-foot small { display: block; color: var(--text-tertiary); font-size: 10px; }
+      .main { min-width: 0; background: var(--canvas); }
+      .topbar { position: sticky; top: 0; z-index: 8; height: 64px; display: flex; align-items: center; gap: 18px; padding: 0 42px; background: var(--chrome); border-bottom: 1px solid var(--line); backdrop-filter: blur(20px) saturate(135%); -webkit-backdrop-filter: blur(20px) saturate(135%); }
+      .crumb { color: var(--text-secondary); font-size: 12px; }
+      .crumb b { color: var(--text); font-weight: 680; }
+      .search { margin-left: auto; width: min(300px, 32vw); height: 35px; display: flex; align-items: center; gap: 8px; padding: 0 11px; border: 1px solid var(--line); border-radius: 6px; background: color-mix(in srgb, var(--surface) 70%, transparent); color: var(--text-tertiary); }
+      .search kbd { margin-left: auto; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; color: var(--text-tertiary); font-size: 10px; }
+      .fresh { display: flex; align-items: center; gap: 7px; color: var(--text-tertiary); font-size: 11px; white-space: nowrap; }
+      .fresh i { width: 6px; height: 6px; border-radius: 50%; background: var(--info); }
+      .theme-toggle { min-height: 34px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 6px; padding: 0 9px; background: transparent; color: var(--text-secondary); font-size: 11px; }
+      .theme-toggle:hover { border-color: var(--line-strong); color: var(--text); }
+      .mobile-menu { display: none; width: 40px; height: 40px; border: 0; background: transparent; font-size: 19px; }
+      .content { width: min(1280px, 100%); margin: 0 auto; padding: 38px 42px 64px; }
+      .hero { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 25px; }
+      .eyebrow { margin: 0 0 8px; color: var(--accent); font-size: 10px; letter-spacing: .12em; font-weight: 760; }
+      h1, h2, h3, p { margin: 0; }
+      h1 { font-size: clamp(25px, 3vw, 34px); line-height: 1.12; letter-spacing: -.015em; font-weight: 730; }
+      .hero p:not(.eyebrow) { margin-top: 8px; color: var(--text-secondary); }
+      .hero-actions { display: flex; align-items: center; gap: 10px; }
+      .window { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+      .window button { min-height: 34px; padding: 0 11px; border: 0; border-right: 1px solid var(--line); background: transparent; color: var(--text-tertiary); font-size: 11px; }
+      .window button:last-child { border-right: 0; }
+      .window button.active { color: var(--text); background: var(--surface-raised); }
+      .action { min-height: 36px; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 6px; padding: 0 14px; background: var(--accent); color: #062129; font-weight: 760; box-shadow: 0 0 20px color-mix(in srgb, var(--accent) 15%, transparent); transition: transform 120ms ease-out, filter 160ms ease-out; }
+      .action:hover { filter: brightness(1.08); }
+      .metrics { display: grid; grid-template-columns: 1.15fr repeat(3, 1fr); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); margin-bottom: 22px; }
+      .metric { min-height: 104px; padding: 16px 19px; border-right: 1px solid var(--line); display: grid; align-content: center; gap: 4px; }
+      .metric:last-child { border-right: 0; }
+      .metric:first-child { background: color-mix(in srgb, var(--danger) 7%, var(--surface)); }
+      .metric label { color: var(--text-tertiary); font-size: 11px; }
+      .metric strong { font-size: 24px; line-height: 1.1; font-weight: 720; }
+      .metric small { color: var(--text-secondary); font-size: 11px; }
+      .metric small.warning { color: var(--warning); }
+      .metric small.accent { color: var(--accent); }
+      .metric small.success { color: var(--success); }
+      .layout { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(300px, .8fr); gap: 20px; align-items: start; }
+      .stack { display: grid; gap: 20px; min-width: 0; }
+      .panel { min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: 0 10px 30px color-mix(in srgb, #000 8%, transparent); }
+      .panel.raised { background: var(--surface-raised); }
+      .panel-head { min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 18px; border-bottom: 1px solid var(--line); }
+      .panel-head h2 { font-size: 14px; font-weight: 700; }
+      .panel-head span { color: var(--text-tertiary); font-size: 11px; }
+      .ghost { border: 0; background: transparent; color: var(--accent); font-size: 11px; padding: 5px 0; }
+      .queue { padding: 7px 18px 9px; }
+      .queue-item { display: grid; grid-template-columns: 3px minmax(0, 1fr) auto; gap: 12px; align-items: center; min-height: 78px; border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent); }
+      .queue-item:last-child { border-bottom: 0; }
+      .rail-status { width: 3px; height: 48px; border-radius: 2px; background: var(--accent); }
+      .rail-status.warning { background: var(--warning); }
+      .rail-status.danger { background: var(--danger); }
+      .rail-status.success { background: var(--success); }
+      .queue-title { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; min-width: 0; }
+      .queue-title b { min-width: 0; font-size: 12px; font-weight: 680; }
+      .tag { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; color: var(--text-tertiary); font-size: 9px; }
+      .tag.verified { color: var(--success); border-color: color-mix(in srgb, var(--success) 35%, transparent); background: color-mix(in srgb, var(--success) 9%, transparent); }
+      .tag.pending { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 36%, transparent); background: color-mix(in srgb, var(--warning) 9%, transparent); }
+      .queue-meta { margin-top: 3px; color: var(--text-tertiary); font-size: 10px; }
+      .queue-meta strong { color: var(--text-secondary); font-weight: 620; }
+      .row-action { border: 1px solid var(--line); border-radius: 5px; padding: 6px 9px; background: color-mix(in srgb, var(--surface-raised) 70%, transparent); color: var(--text-secondary); font-size: 10px; white-space: nowrap; transition: transform 120ms ease-out, border-color 160ms ease, color 160ms ease; }
+      .row-action:hover { border-color: color-mix(in srgb, var(--accent) 46%, transparent); color: var(--accent); }
+      .task-list { padding: 7px 18px 12px; }
+      .task { padding: 14px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent); }
+      .task:last-child { border-bottom: 0; }
+      .task-line, .task-sub { display: flex; justify-content: space-between; gap: 10px; }
+      .task-line b { font-size: 12px; font-weight: 680; }
+      .task-line span, .task-sub { color: var(--text-tertiary); font-size: 10px; }
+      .task-sub { margin-top: 4px; }
+      .task-sub strong { color: var(--text-secondary); font-weight: 600; }
+      .track { height: 5px; margin-top: 9px; border-radius: 3px; background: color-mix(in srgb, var(--text-tertiary) 18%, var(--surface)); overflow: hidden; }
+      .track i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+      .track i.warning { background: var(--warning); }
+      .track i.success { background: var(--success); }
+      .timeline { padding: 14px 18px 16px; }
+      .day { display: grid; grid-template-columns: 52px 14px minmax(0, 1fr); gap: 8px; min-height: 62px; }
+      .day-date { color: var(--text-secondary); font-size: 10px; padding-top: 2px; }
+      .day-date span { color: var(--text-tertiary); }
+      .timeline-rail { position: relative; display: flex; justify-content: center; }
+      .timeline-rail::before { content: ""; position: absolute; top: 8px; bottom: -12px; width: 1px; background: var(--line); }
+      .day:last-child .timeline-rail::before { display: none; }
+      .node { position: relative; z-index: 1; width: 8px; height: 8px; margin-top: 4px; border: 2px solid var(--accent); border-radius: 50%; background: var(--surface); }
+      .node.warning { border-color: var(--warning); }
+      .node.danger { border-color: var(--danger); }
+      .day-body b { display: block; font-size: 11px; font-weight: 680; }
+      .day-body span { display: block; margin-top: 2px; color: var(--text-tertiary); font-size: 10px; }
+      .mini-table { padding: 4px 18px 11px; }
+      .mini-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; align-items: center; min-height: 50px; border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent); }
+      .mini-row:last-child { border-bottom: 0; }
+      .mini-row b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 680; }
+      .mini-row small { display: block; margin-top: 2px; color: var(--text-tertiary); font-size: 9px; }
+      .mini-row strong { font-size: 11px; }
+      .status { min-width: 48px; text-align: center; border-radius: 4px; padding: 3px 5px; font-size: 9px; }
+      .status.warning { color: var(--warning); background: color-mix(in srgb, var(--warning) 10%, transparent); }
+      .status.success { color: var(--success); background: color-mix(in srgb, var(--success) 10%, transparent); }
+      .status.info { color: var(--info); background: color-mix(in srgb, var(--info) 10%, transparent); }
+      .focus-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 14px 18px 18px; }
+      .focus-box { border: 1px solid var(--line); border-radius: 6px; padding: 11px 12px; background: color-mix(in srgb, var(--surface-raised) 80%, transparent); }
+      .focus-box label { display: block; color: var(--text-tertiary); font-size: 10px; }
+      .focus-box strong { display: block; margin-top: 4px; font-size: 14px; }
+      .focus-box small { display: block; margin-top: 3px; color: var(--text-secondary); font-size: 9px; }
+      .source-line { display: flex; gap: 8px; align-items: center; padding: 11px 18px; border-top: 1px solid var(--line); color: var(--text-tertiary); font-size: 10px; }
+      .source-line b { color: var(--text-secondary); font-weight: 600; }
+      .toast { position: fixed; right: 24px; bottom: 24px; z-index: 30; max-width: min(350px, calc(100vw - 32px)); padding: 11px 14px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--chrome); box-shadow: var(--shadow); backdrop-filter: blur(18px); opacity: 0; transform: translateY(8px) scale(.98); pointer-events: none; transition: opacity 180ms ease-out, transform 180ms var(--ease-out); }
+      .toast.show { opacity: 1; transform: translateY(0) scale(1); }
+      .mobile-nav { display: none; }
+      @media (max-width: 980px) { .topbar { padding: 0 24px; } .content { padding-left: 24px; padding-right: 24px; } .layout { grid-template-columns: 1fr; } }
+      @media (max-width: 680px) {
+        .app { display: block; }
+        .sidebar { position: fixed; left: 0; top: 0; width: 248px; transform: translateX(-100%); transition: transform 220ms var(--ease-drawer); box-shadow: var(--shadow); }
+        .sidebar.open { transform: translateX(0); }
+        .mobile-menu { display: inline-grid; place-items: center; }
+        .topbar { height: 58px; padding: 0 12px; gap: 8px; }
+        .crumb { white-space: nowrap; }
+        .crumb span, .fresh-copy, .theme-toggle span { display: none; }
+        .search { width: 34px; margin-left: auto; padding: 0; justify-content: center; border-color: transparent; background: transparent; }
+        .search span, .search kbd { display: none; }
+        .search::before { content: "⌕"; color: var(--text-secondary); font-size: 17px; }
+        .theme-toggle { padding: 0 8px; min-width: 34px; justify-content: center; }
+        .content { padding: 26px 16px calc(86px + env(safe-area-inset-bottom)); }
+        .hero { display: block; margin-bottom: 19px; }
+        h1 { font-size: 27px; }
+        .hero-actions { margin-top: 17px; display: grid; grid-template-columns: 1fr; }
+        .window { width: 100%; }
+        .window button { flex: 1; }
+        .action { width: 100%; }
+        .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 18px; }
+        .metric { min-height: 88px; padding: 13px; }
+        .metric:nth-child(2n) { border-right: 0; }
+        .metric:nth-last-child(-n + 2) { border-top: 1px solid var(--line); }
+        .metric strong { font-size: 21px; }
+        .layout, .stack { gap: 16px; }
+        .panel-head { min-height: 52px; padding: 0 14px; }
+        .queue, .task-list, .timeline, .mini-table { padding-left: 14px; padding-right: 14px; }
+        .queue-item { grid-template-columns: 3px minmax(0, 1fr) auto; gap: 9px; padding: 9px 0; align-items: center; }
+        .rail-status { height: 54px; }
+        .row-action { grid-column: auto; justify-self: auto; margin-top: 0; padding-left: 7px; padding-right: 7px; }
+        .focus-grid { grid-template-columns: 1fr 1fr; padding-left: 14px; padding-right: 14px; }
+        .source-line { padding-left: 14px; padding-right: 14px; flex-wrap: wrap; }
+        .mobile-nav { position: fixed; left: 12px; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 12; display: grid; grid-template-columns: repeat(4, 1fr); min-height: 56px; border: 1px solid var(--line-strong); border-radius: 13px; background: var(--chrome); box-shadow: var(--shadow); backdrop-filter: blur(20px) saturate(140%); }
+        .mobile-nav button { border: 0; background: transparent; color: var(--text-tertiary); font-size: 10px; }
+        .mobile-nav button.active { color: var(--accent); }
+        .mobile-nav i { display: block; font-style: normal; font-size: 17px; line-height: 1.1; margin-bottom: 2px; }
+        .toast { left: 16px; right: 16px; bottom: calc(80px + env(safe-area-inset-bottom)); }
+      }
+      @media (prefers-reduced-transparency: reduce) { .sidebar, .topbar, .mobile-nav, .toast { background: var(--surface); backdrop-filter: none; -webkit-backdrop-filter: none; } }
+      @media (prefers-contrast: more) { :root, [data-theme="light"] { --line: color-mix(in srgb, var(--text) 42%, transparent); --line-strong: color-mix(in srgb, var(--text) 60%, transparent); --text-secondary: var(--text); --text-tertiary: color-mix(in srgb, var(--text) 80%, transparent); } .panel, .focus-box, .search { border-color: var(--line); } }
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; scroll-behavior: auto !important; } .sidebar { transform: none; display: none; } .sidebar.open { display: flex; } }
+      @media (forced-colors: active) { .panel, .focus-box, .search, .mobile-nav, .sidebar, .topbar { border: 1px solid CanvasText; background: Canvas; } .tag, .status { border: 1px solid CanvasText; background: Canvas; color: CanvasText; } .rail-status { background: Highlight; } }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar" id="sidebar" aria-label="主导航">
+        <div class="brand"><span class="brand-mark" aria-hidden="true">⌁</span><div><strong>Cardfolio</strong><small>个人卡片工作台</small></div></div>
+        <nav class="nav">
+          <button class="active" data-nav="工作台"><span class="nav-icon" aria-hidden="true">⌂</span><span>工作台</span></button>
+          <button data-nav="卡片"><span class="nav-icon" aria-hidden="true">▣</span><span>卡片</span><span class="badge">8</span></button>
+          <button data-nav="活动"><span class="nav-icon" aria-hidden="true">◇</span><span>活动</span><span class="badge">3</span></button>
+          <button data-nav="权益"><span class="nav-icon" aria-hidden="true">✦</span><span>权益</span></button>
+          <button data-nav="积分"><span class="nav-icon" aria-hidden="true">◈</span><span>积分</span></button>
+          <button data-nav="提醒"><span class="nav-icon" aria-hidden="true">◷</span><span>提醒</span><span class="badge">4</span></button>
+        </nav>
+        <div class="sidebar-foot"><span class="avatar">林</span><div><strong>林先生</strong><small>个人账户 · 最近核对 08:42</small></div></div>
+      </aside>
+      <main class="main">
+        <header class="topbar">
+          <button class="mobile-menu" id="menu" aria-label="打开导航" aria-expanded="false">☰</button>
+          <div class="crumb"><b>工作台</b><span> / 运营总览</span></div>
+          <div class="search" role="search" aria-label="全局搜索"><span>⌕　搜索卡片、活动或积分</span><kbd>⌘ K</kbd></div>
+          <div class="fresh"><i aria-hidden="true"></i><span class="fresh-copy">最近核对 · 2026.08.12 08:42</span></div>
+          <button class="theme-toggle" id="theme" aria-label="切换浅色和深色主题"><span>主题</span><b aria-hidden="true">◐</b></button>
+          <span class="avatar" aria-label="林先生">林</span>
+        </header>
+        <div class="content">
+          <section class="hero"><div><p class="eyebrow">WED · 2026.08.12</p><h1>早上好，林先生</h1><p>未来 90 天，有 4 项事项值得先处理。</p></div><div class="hero-actions"><div class="window" aria-label="时间窗口"><button>30 天</button><button class="active">90 天</button><button>180 天</button></div><button class="action" id="quick-add">＋ 快速新增</button></div></section>
+          <section class="metrics" aria-label="工作台摘要">
+            <div class="metric"><label>待处理事项</label><strong>04</strong><small class="warning">2 项 7 天内到期</small></div>
+            <div class="metric"><label>进行中任务</label><strong>07</strong><small class="accent">本周已完成 3 项</small></div>
+            <div class="metric"><label>可用权益</label><strong>12</strong><small class="success">覆盖 5 张卡片</small></div>
+            <div class="metric"><label>积分总余额</label><strong>128,450</strong><small>3 个账户 · 1 个待核对</small></div>
+          </section>
+          <div class="layout">
+            <div class="stack">
+              <section class="panel raised">
+                <div class="panel-head"><div><h2>待处理队列</h2><span>按截止日与来源排序</span></div><button class="ghost" data-toast="已打开全部待处理事项">查看全部 →</button></div>
+                <div class="queue">
+                  <div class="queue-item"><span class="rail-status danger" aria-label="逾期风险"></span><div><div class="queue-title"><b>长城世界卡 · 年费达标</b><span class="tag verified">官方已核验</span></div><div class="queue-meta"><strong>还差 3 次消费</strong>　截止 08 月 27 日 · 15 天后 · 账单日前入账</div></div><button class="row-action" data-toast="已打开刷卡任务记录">更新进度</button></div>
+                  <div class="queue-item"><span class="rail-status warning" aria-label="临期"></span><div><div class="queue-title"><b>经典白金卡 · 夏日返现活动</b><span class="tag verified">官方已核验</span></div><div class="queue-meta"><strong>¥2,400 / ¥5,000</strong>　线上支付 · 截止 08 月 31 日 · 规则版本 2</div></div><button class="row-action" data-toast="已打开活动规则与来源">查看规则</button></div>
+                  <div class="queue-item"><span class="rail-status warning" aria-label="待核对"></span><div><div class="queue-title"><b>机场贵宾室 · 2 次权益</b><span class="tag pending">待核对</span></div><div class="queue-meta"><strong>还有 7 天</strong>　需预约 · 深圳宝安机场 · 最近核对 6 天前</div></div><button class="row-action" data-toast="已打开权益使用记录">记录使用</button></div>
+                </div>
+                <div class="source-line"><b>可信度维度</b><span>官方已核验 2</span><span>用户自录待核对 1</span><span>所有状态均保留最后核对日期</span></div>
+              </section>
+              <section class="panel">
+                <div class="panel-head"><div><h2>刷卡任务</h2><span>进行中 · 需要行动</span></div><button class="ghost" data-toast="已打开活动任务列表">活动 →</button></div>
+                <div class="task-list">
+                  <div class="task"><div class="task-line"><b>长城世界卡 · 年费免除</b><span>4 / 7 次</span></div><div class="task-sub"><span>消费次数 · 账单日前入账</span><strong>剩余 3 次</strong></div><div class="track" aria-label="完成 57%"><i style="width:57%"></i></div></div>
+                  <div class="task"><div class="task-line"><b>经典白金卡 · 夏日返现</b><span>¥2,400 / ¥5,000</span></div><div class="task-sub"><span>线上支付 · 待入账 ¥320</span><strong>剩余 ¥2,600</strong></div><div class="track" aria-label="完成 48%"><i class="warning" style="width:48%"></i></div></div>
+                  <div class="task"><div class="task-line"><b>浦发超白金 · 境外消费</b><span>¥8,200 / ¥10,000</span></div><div class="task-sub"><span>境外 POS · 规则版本 2</span><strong>剩余 ¥1,800</strong></div><div class="track" aria-label="完成 82%"><i class="success" style="width:82%"></i></div></div>
+                </div>
+                <div class="source-line"><b>刷卡方式</b><span>线上支付</span><span>境外 POS</span><span>以入账记录为准，待入账不会提前达标</span></div>
+              </section>
+            </div>
+            <div class="stack">
+              <section class="panel"><div class="panel-head"><div><h2>未来 30 天</h2><span>时间线</span></div><button class="ghost" data-toast="已打开完整日历">日历 →</button></div><div class="timeline">
+                <div class="day"><div class="day-date">08/15<br><span>周六</span></div><div class="timeline-rail"><i class="node warning"></i></div><div class="day-body"><b>机场贵宾室权益</b><span>招商经典白金卡 · 需预约</span></div></div>
+                <div class="day"><div class="day-date">08/21<br><span>周五</span></div><div class="timeline-rail"><i class="node"></i></div><div class="day-body"><b>积分批次到期</b><span>中行积分 · 12,000 分</span></div></div>
+                <div class="day"><div class="day-date">08/27<br><span>周四</span></div><div class="timeline-rail"><i class="node danger"></i></div><div class="day-body"><b>年费达标截止</b><span>长城世界卡 · 还差 3 次</span></div></div>
+              </div></section>
+              <section class="panel"><div class="panel-head"><div><h2>积分批次</h2><span>按到期日排序</span></div><button class="ghost" data-toast="已打开积分账户">积分 →</button></div><div class="mini-table">
+                <div class="mini-row"><div><b>中行 · 长城积分</b><small>12,000 分 · 08/21 到期</small></div><strong>12,000</strong><span class="status warning">临期</span></div>
+                <div class="mini-row"><div><b>招行 · 经典积分</b><small>86,450 分 · 2027/03/01</small></div><strong>86,450</strong><span class="status success">可用</span></div>
+                <div class="mini-row"><div><b>浦发 · 里程积分</b><small>30,000 分 · 余额待核对</small></div><strong>30,000</strong><span class="status info">待核对</span></div>
+              </div><div class="source-line"><b>兑换</b><span>处理中 02 笔</span><span>确认扣减与待入账分开</span></div></section>
+              <section class="panel"><div class="panel-head"><div><h2>对象焦点</h2><span>详情检查器预览</span></div><button class="ghost" data-toast="已打开对象详情">打开详情 →</button></div><div class="focus-grid"><div class="focus-box"><label>卡片</label><strong>08 张</strong><small>5 张使用中</small></div><div class="focus-box"><label>权益价值</label><strong>¥4,860</strong><small>用户确认</small></div><div class="focus-box"><label>兑换处理中</label><strong>02 笔</strong><small>最近更新 2 小时前</small></div></div></section>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <nav class="mobile-nav" aria-label="移动端导航"><button class="active"><i>⌂</i>工作台</button><button><i>◇</i>活动</button><button><i>✦</i>权益</button><button><i>◈</i>积分</button></nav>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script>
+      const root = document.documentElement;
+      const themeButton = document.querySelector('#theme');
+      const savedTheme = localStorage.getItem('cardfolio-theme');
+      if (savedTheme === 'light' || savedTheme === 'dark') root.dataset.theme = savedTheme;
+      themeButton?.addEventListener('click', () => {
+        const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+        root.dataset.theme = next;
+        localStorage.setItem('cardfolio-theme', next);
+        showToast(next === 'dark' ? '已切换深色专注主题' : '已切换浅色阅读主题');
+      });
+      const toast = document.querySelector('#toast');
+      let toastTimer;
+      function showToast(message) {
+        if (!toast) return;
+        toast.textContent = message;
+        toast.classList.add('show');
+        window.clearTimeout(toastTimer);
+        toastTimer = window.setTimeout(() => toast.classList.remove('show'), 2400);
+      }
+      document.querySelectorAll('[data-toast]').forEach((button) => button.addEventListener('click', () => showToast(button.dataset.toast)));
+      document.querySelector('#quick-add')?.addEventListener('click', () => showToast('快速新增：卡片、活动、权益或积分批次'));
+      document.querySelectorAll('.window button').forEach((button) => button.addEventListener('click', () => {
+        document.querySelectorAll('.window button').forEach((item) => item.classList.remove('active'));
+        button.classList.add('active');
+        showToast('时间窗口已切换为 ' + button.textContent);
+      }));
+      const sidebar = document.querySelector('#sidebar');
+      const menu = document.querySelector('#menu');
+      menu?.addEventListener('click', () => {
+        const open = sidebar?.classList.toggle('open');
+        menu.setAttribute('aria-expanded', String(Boolean(open)));
+      });
+      document.querySelectorAll('.nav button').forEach((button) => button.addEventListener('click', () => {
+        document.querySelectorAll('.nav button').forEach((item) => item.classList.remove('active'));
+        button.classList.add('active');
+        if (window.innerWidth <= 680) sidebar?.classList.remove('open');
+        showToast('已切换到 ' + button.dataset.nav);
+      }));
+    </script>
+  </body>
+</html>
