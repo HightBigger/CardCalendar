@@ -1,0 +1,12 @@
+"use client";
+import { useState } from "react";
+import type { ActivityDetail, CheckScope } from "../../../../contracts/activities";
+export function EnrollmentForm({ detail, busy, error, onSave }: { detail: ActivityDetail; busy: boolean; error?: string; onSave: (scope: CheckScope, kind: string, status: string, note: string, attemptId?: string) => Promise<boolean> }) {
+  const [scopeKey, setScopeKey] = useState("");
+  const [kind, setKind] = useState("record_eligibility");
+  const [status, setStatus] = useState("unknown");
+  const [note, setNote] = useState("");
+  const scope = detail.checks.find((entry) => (entry.scope === "participation" ? "participation" : entry.periodId) === scopeKey);
+  const permission = scope?.allowedCommands.find((command) => command.kind === kind);
+  return <section className="section-block"><h2>资格、报名与名额核对</h2><div className="activity-checks">{detail.checks.map((entry) => <p key={entry.scope + entry.periodId}><strong>{entry.label}</strong> · 资格：{entry.eligibility} · 报名：{entry.enrollment} · 名额：{entry.quota} {entry.reason}</p>)}</div><form className="form-grid" onSubmit={async (event) => { event.preventDefault(); if (!scope || !permission?.enabled || busy) return; await onSave({ scope: scope.scope, ...(scope.scope === "period" ? { periodId: scope.periodId } : {}) }, kind, status, note, scope.attemptId); }}><label>核对适用范围<select required value={scopeKey} onChange={(event) => setScopeKey(event.target.value)}><option value="">选择全期或指定周期</option>{detail.checks.map((entry) => <option key={entry.scope + entry.periodId} value={entry.scope === "participation" ? "participation" : entry.periodId}>{entry.label}</option>)}</select></label><label>核对事项<select value={kind} onChange={(event) => { setKind(event.target.value); setStatus("unknown"); }}><option value="record_eligibility">资格</option><option value="record_enrollment">报名结果</option><option value="record_quota">名额</option></select></label><label>官方核对结果<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="unknown">待核对</option><option value="confirmed">已确认</option><option value="not_met">不符合／失败</option></select></label><label>核对证据与说明<textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} /></label>{permission?.reason && <p>{permission.reason}</p>}{error && <p className="form-error" role="alert">{error}</p>}<button className="secondary-button" disabled={busy || !permission?.enabled} aria-busy={busy}>记录核对结果</button></form></section>;
+}

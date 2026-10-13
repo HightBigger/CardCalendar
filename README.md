@@ -20,6 +20,8 @@ npm run dev
 
 前端使用真实注册/登录会话。.env.example 默认关闭 AUTH_DEV_HEADER；只有本地调试旧脚本时才临时设置为 true，通过 x-user-id 请求头访问 API，生产环境必须保持关闭。
 
+本地开发的侧边导航提供“新功能预览”，入口为 `/dev/workbench`，用于体验第 21、22 节的活动、周期计划和统一待办。预览使用示例数据，不保存到登录账户。普通账户页的新功能仍受开关控制，部分私人活动和自定义待办接口尚未接入；第 23 节银行活动目录需启用 PostgreSQL 和对应开关。具体接入状态见 [前端交付说明](./docs/FRONTEND-IMPLEMENTATION.md) 和 [目录交付说明](./docs/CC-23-DELIVERY.md)。
+
 ## 数据库
 
 使用 PostgreSQL 时执行：

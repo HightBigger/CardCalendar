@@ -1,0 +1,195 @@
+{
+  "generatedAt": "2026-10-09T10:44:19.479Z",
+  "checks": [
+    {
+      "name": "todos-list",
+      "size": "desktop",
+      "overflow": 0,
+      "dialogs": [],
+      "pageErrors": []
+    },
+    {
+      "name": "custom-todo",
+      "size": "desktop",
+      "overflow": 0,
+      "dialogs": [
+        {
+          "overflow": 0,
+          "width": 436.8000183105469
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "name": "todos-calendar",
+      "size": "desktop",
+      "overflow": 0,
+      "dialogs": [],
+      "pageErrors": []
+    },
+    {
+      "name": "activities-list",
+      "size": "desktop",
+      "overflow": 0,
+      "dialogs": [],
+      "pageErrors": []
+    },
+    {
+      "name": "activity-editor",
+      "size": "desktop",
+      "overflow": 0,
+      "dialogs": [
+        {
+          "overflow": 0,
+          "width": 436.8000183105469
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "name": "activity-detail",
+      "size": "desktop",
+      "overflow": 0,
+      "dialogs": [],
+      "pageErrors": []
+    },
+    {
+      "name": "period-progress",
+      "size": "desktop",
+      "overflow": 0,
+      "dialogs": [
+        {
+          "overflow": 0,
+          "width": 455
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "name": "reward-claim",
+      "size": "desktop",
+      "overflow": 0,
+      "dialogs": [
+        {
+          "overflow": 0,
+          "width": 455
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "name": "overview",
+      "size": "desktop",
+      "overflow": 0,
+      "dialogs": [],
+      "pageErrors": []
+    },
+    {
+      "name": "card-summary",
+      "size": "desktop",
+      "overflow": 0,
+      "dialogs": [
+        {
+          "overflow": 0,
+          "width": 880
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "name": "todos-list",
+      "size": "mobile",
+      "overflow": 0,
+      "dialogs": [],
+      "pageErrors": []
+    },
+    {
+      "name": "custom-todo",
+      "size": "mobile",
+      "overflow": 0,
+      "dialogs": [
+        {
+          "overflow": 0,
+          "width": 336
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "name": "todos-calendar",
+      "size": "mobile",
+      "overflow": 0,
+      "dialogs": [],
+      "pageErrors": []
+    },
+    {
+      "name": "activities-list",
+      "size": "mobile",
+      "overflow": 0,
+      "dialogs": [],
+      "pageErrors": []
+    },
+    {
+      "name": "activity-editor",
+      "size": "mobile",
+      "overflow": 0,
+      "dialogs": [
+        {
+          "overflow": 0,
+          "width": 322.55999755859375
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "name": "activity-detail",
+      "size": "mobile",
+      "overflow": 0,
+      "dialogs": [],
+      "pageErrors": []
+    },
+    {
+      "name": "period-progress",
+      "size": "mobile",
+      "overflow": 0,
+      "dialogs": [
+        {
+          "overflow": 0,
+          "width": 336
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "name": "reward-claim",
+      "size": "mobile",
+      "overflow": 0,
+      "dialogs": [
+        {
+          "overflow": 0,
+          "width": 336
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "name": "overview",
+      "size": "mobile",
+      "overflow": 0,
+      "dialogs": [],
+      "pageErrors": []
+    },
+    {
+      "name": "card-summary",
+      "size": "mobile",
+      "overflow": 0,
+      "dialogs": [
+        {
+          "overflow": 0,
+          "width": 336
+        }
+      ],
+      "pageErrors": []
+    }
+  ]
+}

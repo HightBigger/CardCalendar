@@ -1,0 +1,210 @@
+{
+  "executedAt": "2026-10-13T10:24:25.282Z",
+  "environment": "isolated PostgreSQL 18 + Next HTTP + ordinary password login; private flags false for gate test, true for product flows; catalog flags always false",
+  "results": [
+    {
+      "name": "普通成员真实注册、密码登录、建卡",
+      "status": "PASS",
+      "observed": {
+        "userId": "838aae7c-451e-4a74-91e6-95a69d19575f",
+        "cardId": "88dd9c0d-d6f7-4d3a-a18e-13fcbf58f13d"
+      }
+    },
+    {
+      "name": "关闭私人写入开关时拒绝新建",
+      "status": "PASS",
+      "observed": 404
+    },
+    {
+      "name": "真实Cookie与Origin鉴权及跨用户卡引用",
+      "status": "PASS",
+      "observed": {
+        "missingOrigin": 403,
+        "missingSession": 401,
+        "crossOwner": 404
+      }
+    },
+    {
+      "name": "现有ActivityDraft空可选字段兼容",
+      "status": "PASS",
+      "observed": 200
+    },
+    {
+      "name": "创建参与、一次性计划、独立资格核对",
+      "status": "PASS",
+      "observed": {
+        "periods": 1,
+        "version": 3
+      }
+    },
+    {
+      "name": "逐条消费待办主操作可用",
+      "status": "PASS",
+      "observed": {
+        "enabled": true
+      }
+    },
+    {
+      "name": "逐条消费幂等、同键不同内容拒绝、累计计算",
+      "status": "PASS",
+      "observed": {
+        "confirmed": {
+          "count": 2,
+          "amount": "100.00",
+          "text": "2 笔 · 100.00 CNY"
+        },
+        "conflict": 409
+      }
+    },
+    {
+      "name": "官方达标、奖励提交/确认/部分及全额到账完整HTTP链",
+      "status": "PASS",
+      "observed": {
+        "claim": "confirmed",
+        "receipt": "received",
+        "received": "20.00"
+      }
+    },
+    {
+      "name": "完成待办后日历与列表行动ID/状态一致",
+      "status": "PASS",
+      "observed": {
+        "actions": 5,
+        "calendarActions": 4
+      }
+    },
+    {
+      "name": "退款重评进度与奖励条件，保留已到账事实",
+      "status": "PASS",
+      "observed": {
+        "amount": "50.00",
+        "qualification": "unknown",
+        "condition": "unknown",
+        "receipt": "received"
+      }
+    },
+    {
+      "name": "整体目标官方已确认后不得静默修改并沿用旧达标结论",
+      "status": "PASS",
+      "observed": {
+        "revisionStatus": 422,
+        "target": "1 笔",
+        "qualification": "met",
+        "rewardCondition": "met"
+      }
+    },
+    {
+      "name": "真实消费、评估、节点和计划完整导出",
+      "status": "PASS",
+      "observed": {
+        "keys": [
+          "schemaVersion",
+          "private_campaigns",
+          "private_rule_versions",
+          "activity_participations",
+          "activity_periods",
+          "activity_period_revisions",
+          "period_plan_revisions",
+          "participation_checks",
+          "spend_tasks",
+          "catalog_spend_observations",
+          "spend_facts",
+          "spend_fact_events",
+          "task_evaluations",
+          "activity_rewards",
+          "activity_reward_dependencies",
+          "activity_reward_events",
+          "business_date_nodes",
+          "todo_actions",
+          "todo_notification_schedules",
+          "catalog_personal_history",
+          "todo_notifications",
+          "workbench_jobs",
+          "catalog_personal_outbox",
+          "catalog_command_results",
+          "period_plan_candidates",
+          "workbench_inbox"
+        ]
+      }
+    },
+    {
+      "name": "posted声明阶段不得在成功响应中回退occurred",
+      "status": "PASS",
+      "observed": {
+        "id": "f63cee64-5c52-4464-a15d-dc6ccbbfbf9f",
+        "occurredOn": "2026-10-13",
+        "count": 1,
+        "amount": "50.00",
+        "stage": "posted",
+        "note": "已入账消费",
+        "evaluatedTaskIds": [
+          "0cc71971-482d-435b-b2c8-47bc0ffc6449"
+        ]
+      }
+    },
+    {
+      "name": "无卡无日期自定义待办及完成/恢复/忽略历史",
+      "status": "PASS",
+      "observed": {
+        "status": "ignored",
+        "history": [
+          "create",
+          "complete",
+          "restore",
+          "ignore"
+        ]
+      }
+    },
+    {
+      "name": "使用响应meta.asOf与nextCursor可继续翻页",
+      "status": "PASS",
+      "observed": {
+        "firstTotal": 4,
+        "nextStatus": 200
+      }
+    },
+    {
+      "name": "排队后卡片暂停，worker重新校验并保留旧计划",
+      "status": "PASS",
+      "observed": {
+        "job": {
+          "id": "68dd24a9-8322-4f44-a81d-b513a76c7ea6",
+          "status": "failed",
+          "progress": 75,
+          "message": "当前卡片或参与不能生成消费计划",
+          "retryable": true
+        },
+        "periods": 0
+      }
+    },
+    {
+      "name": "SQL故障任务持久failed且候选整体回滚",
+      "status": "PASS",
+      "observed": {
+        "job": {
+          "id": "5c54e161-8835-48c3-af39-be1c0abc2e5b",
+          "status": "failed",
+          "progress": 75,
+          "message": "acceptance injected failure",
+          "retryable": true
+        },
+        "periods": 0
+      }
+    },
+    {
+      "name": "无卡自定义待办账户删除后彻底清理",
+      "status": "PASS",
+      "observed": {
+        "anonymizedUsers": 1,
+        "results": [
+          {
+            "userId": "55d27195-924a-499a-8785-bcc98c370d79",
+            "status": "completed",
+            "retryCount": 1,
+            "completedAt": "2026-10-13T10:24:25.274Z"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,19 +1,8 @@
-:root {
-  --ink: #17211d;
-  --muted: #77817b;
-  --line: #e5e9e5;
-  --soft: #f5f7f4;
-  --paper: #fbfcfa;
-  --green: #3d6b52;
-  --green-dark: #244b37;
-  --green-soft: #e7f0e8;
-  --amber: #c48b3a;
-  --amber-soft: #fbf2df;
-  --coral: #c96e5c;
-  --coral-soft: #f9e9e5;
-  --blue: #547c9f;
-  --blue-soft: #e8eff4;
-}
+@import "../src/frontend/shared/styles/tokens.css";
+@import "../src/frontend/shared/styles/workbench.css";
+@import "../src/frontend/features/todos/styles/todos.css";
+@import "../src/frontend/features/activities/styles/activities.css";
+
 
 * {
   box-sizing: border-box;

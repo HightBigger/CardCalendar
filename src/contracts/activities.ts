@@ -1,0 +1,21 @@
+import type { AllowedCommand, CardIdentity, DateValue, PrimaryAction, Resource } from "./workbench";
+export type CheckScope = { scope: "participation" | "period"; periodId?: string };
+export type ParticipationCheck = CheckScope & { label: string; eligibility: string; enrollment: string; quota: string; reason?: string; attemptId?: string; allowedCommands: AllowedCommand[] };
+export type ActivitySummary = {
+  id: string; version: number; campaignId: string; ruleId: string; ruleVersion: number; ruleVersionId: string;
+  name: string; card: CardIdentity; lifecycle: "planned" | "active" | "ended" | "cancelled";
+  start: DateValue; end: DateValue; source: { label: string; url?: string; verifiedAt?: string | null }; rulesText: string;
+  currentPeriod: { id: string; label: string; targetText: string; confirmedText: string; pendingText: string; remainingText: string; deadline: DateValue } | null;
+  rewards: RewardSummary[]; nextAction: PrimaryAction | null; nextActionDate: DateValue; allowedCommands: AllowedCommand[]; editorDraft?: ActivityDraft;
+};
+export type ActivityPeriod = { id: string; version?: number; participationId: string; planRevisionId: string; label: string; startOn: string; endOn: string; timezone: string; phase: "planned" | "active" | "ended" | "cancelled"; targetText: string; confirmedText: string; pendingText: string; remainingText: string; qualificationText: string; taskId?: string; allowedCommands: AllowedCommand[] };
+export type RewardSummary = { id: string; version: number; name: string; valueText: string; scopeLabel: string; conditionStatus: "unknown" | "not_met" | "met"; conditionText: string; claimStatus: string; claimText: string; receiptStatus: string; receiptText: string; primaryAction: PrimaryAction };
+export type ActivityDetail = { activity: ActivitySummary; periods: ActivityPeriod[]; checks: ParticipationCheck[]; history: { id: string; label: string; occurredAt: string; note?: string }[]; plan: { id: string; version: number; type: PeriodPlanDraft["type"]; timezone: string } | null; nodePreferences: NodePreference[]; catalogSource?: { catalogActivityId: string }; overallTasks: { id: string; name: string }[] };
+export type ActivityList = { items: ActivitySummary[]; cards: CardIdentity[]; total: number };
+export type ActivityFilter = { cardId: string; state: "all" | "active" | "planned" | "ended" | "cancelled" | "unclaimed"; q: string };
+export type ActivityDraft = { cardId: string; name: string; startOn?: string; endOn?: string; sourceLabel: string; sourceUrl?: string; rulesText: string; enrollmentRequired: "yes" | "no" | "unknown"; channel: string; cycleType: "month" | "billing" | "custom" | "once"; targetKind: "count" | "amount" | "count_and_amount" | "count_or_amount" | "custom"; targetCount?: number; targetAmount?: string; currency: string; countingBasis: "occurred" | "posted" | "settled" | "unknown"; rewardText: string; start?: DateValue; end?: DateValue; enrollmentScope?: "participation" | "period"; enrollmentDeadline?: DateValue; quotaRequired?: boolean; minimumAmount?: string };
+export type ActivitySave = { participationId?: string; ruleVersionId?: string; invalidated?: Resource[] };
+export type PeriodPlanDraft = { type: "month" | "billing" | "custom" | "once"; startOn: string; endOn: string; timezone: string; partialPolicy: "full_target" | "source_defined" | "needs_review"; periods: { periodId?: string; startOn: string; endOn: string; targetCount?: number; targetAmount?: string }[]; affectedPeriodIds: string[]; targetKind: ActivityDraft["targetKind"]; targetCount?: number; targetAmount?: string; currency: string; ruleVersionId: string; participationVersion: number; expectedVersion?: number; retryJobId?: string; mode?: "snapshot" | "entries" };
+export type NodePreference = { nodeKind: string; label: string; showInCalendar: boolean; createTodo: boolean; notifyDaysBefore: number[] };
+export type ActivityCommit = { participationId: string; version: number; invalidated?: Resource[] };
+export type StopActivityDraft = { command: "cancel"; expectedVersion: number; rewardReminderPolicy: "keep" | "stop"; note: string };

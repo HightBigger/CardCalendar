@@ -13,6 +13,7 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:smoke": "tsx scripts/db-smoke.ts",
     "db:verify": "tsx scripts/db-verify.ts",
+    "test:http-workbench": "tsx scripts/http-workbench-smoke.ts",
     "worker": "tsx src/workers/index.ts"
   },
   "dependencies": {

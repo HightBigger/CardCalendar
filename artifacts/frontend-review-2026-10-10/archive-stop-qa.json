@@ -1,0 +1,109 @@
+[
+  {
+    "name": "confirmation",
+    "policy": "stop",
+    "viewport": {
+      "width": 360,
+      "height": 800
+    },
+    "overflow": 0,
+    "dialogs": [
+      {
+        "width": 336,
+        "overflow": 0
+      }
+    ],
+    "errors": []
+  },
+  {
+    "name": "card-history",
+    "policy": "stop",
+    "viewport": {
+      "width": 360,
+      "height": 800
+    },
+    "overflow": 0,
+    "dialogs": [
+      {
+        "width": 336,
+        "overflow": 0
+      }
+    ],
+    "errors": []
+  },
+  {
+    "name": "periods",
+    "policy": "stop",
+    "viewport": {
+      "width": 360,
+      "height": 800
+    },
+    "overflow": 0,
+    "dialogs": [],
+    "errors": []
+  },
+  {
+    "name": "task-progress",
+    "policy": "stop",
+    "viewport": {
+      "width": 360,
+      "height": 800
+    },
+    "overflow": 0,
+    "dialogs": [
+      {
+        "width": 336,
+        "overflow": 0
+      }
+    ],
+    "errors": []
+  },
+  {
+    "name": "task-history",
+    "policy": "stop",
+    "viewport": {
+      "width": 360,
+      "height": 800
+    },
+    "overflow": 0,
+    "dialogs": [
+      {
+        "width": 336,
+        "overflow": 0
+      }
+    ],
+    "errors": []
+  },
+  {
+    "name": "reward-receipt",
+    "policy": "stop",
+    "viewport": {
+      "width": 360,
+      "height": 800
+    },
+    "overflow": 0,
+    "dialogs": [
+      {
+        "width": 336,
+        "overflow": 0
+      }
+    ],
+    "errors": []
+  },
+  {
+    "name": "metadata-edit",
+    "policy": "stop",
+    "viewport": {
+      "width": 360,
+      "height": 800
+    },
+    "overflow": 0,
+    "dialogs": [
+      {
+        "width": 336,
+        "overflow": 0
+      }
+    ],
+    "errors": []
+  }
+]

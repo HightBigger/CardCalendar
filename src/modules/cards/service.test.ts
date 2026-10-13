@@ -175,4 +175,26 @@ describe("card schedule sync", () => {
     );
     expect(archived.status).toBe("archived");
   });
+  it("saves metadata and fee inputs in the same legacy archive update", async () => {
+    const f = await createFixture();
+    expect(await updateCard(f.user.id, f.card.id, {
+      name: "归档时修改", notes: "完整保存", annualFeeAmount: 1200, nextFeeDate: "2027-08-20", status: "archived",
+    }, f.cards, f.cycles, f.events, f.reminders, f.auth)).toMatchObject({
+      name: "归档时修改", notes: "完整保存", annualFeeAmount: 1200, nextFeeDate: "2027-08-20", status: "archived",
+    });
+    expect(await f.events.get(f.user.id, f.event.id)).toMatchObject({ dueDate: "2027-08-20", expectedAmount: 1200 });
+    expect((await f.reminders.list(f.user.id, false)).every((r) => r.status === "cancelled")).toBe(true);
+  });
+  it("edits an already archived card without changing archive time or recreating fee reminders", async () => {
+    const f = await createFixture();
+    const archived = await archiveCard(f.user.id, f.card.id, f.cards, f.reminders);
+    const before = await f.reminders.list(f.user.id, false);
+    expect(await updateCard(f.user.id, f.card.id, {
+      ...archived, name: "归档后修改", notes: "可正常编辑", annualFeeAmount: 1200, nextFeeDate: "2027-08-20",
+    }, f.cards, f.cycles, f.events, f.reminders, f.auth)).toMatchObject({
+      name: "归档后修改", notes: "可正常编辑", status: "archived", archivedAt: archived.archivedAt,
+    });
+    expect(await f.events.get(f.user.id, f.event.id)).toMatchObject({ dueDate: "2027-08-20", expectedAmount: 1200 });
+    expect(await f.reminders.list(f.user.id, false)).toEqual(before);
+  });
 });

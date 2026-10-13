@@ -276,7 +276,9 @@ export function createDrizzleRepositories(db: Database): DrizzleRepositories {
             progressPeriodEnd: next.progressPeriodEnd ?? null,
             customRuleText: next.customRuleText ?? null,
             notes: next.notes ?? null,
-            archivedAt: next.status === "archived" ? new Date() : current.archivedAt ? new Date(current.archivedAt) : null,
+            // Leave an existing timestamp in PostgreSQL: a JS Date round trip
+            // would truncate its microseconds even when the lifecycle is unchanged.
+            archivedAt: next.status === "archived" && current.status !== "archived" ? new Date() : undefined,
             updatedAt: new Date(),
           })
           .where(and(eq(cards.id, cardId), eq(cards.userId, userId)));

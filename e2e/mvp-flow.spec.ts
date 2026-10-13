@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./support/isolated-mvp-routes";
 
 test("MVP main flow on mobile viewport", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -43,7 +43,7 @@ test("MVP main flow on mobile viewport", async ({ page }) => {
   await page.locator('label:has-text("目标次数") input').fill("12");
   await page.getByRole("button", { name: "保存卡片" }).click();
 
-  const toast = page.getByRole("status");
+  const toast = page.locator(".toast[role=status]");
   await expect(toast).toContainText("卡片已添加，提醒已创建");
   await toast.getByRole("button", { name: "关闭提示" }).click();
   await expect(toast).toBeHidden();

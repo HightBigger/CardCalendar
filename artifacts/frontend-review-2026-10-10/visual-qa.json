@@ -1,0 +1,636 @@
+{
+  "generatedAt": "2026-10-10T01:54:42.609Z",
+  "source": "read-only development fixtures",
+  "checks": [
+    {
+      "name": "todos-list",
+      "size": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "overflow": 0,
+      "dialogs": [],
+      "planCount": 0,
+      "preferenceCount": 0,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "custom-todo",
+      "size": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "overflow": 0,
+      "dialogs": [
+        {
+          "width": 455,
+          "overflow": 0
+        }
+      ],
+      "planCount": 0,
+      "preferenceCount": 0,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "custom-todo-submit",
+      "size": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "overflow": 0,
+      "dialogs": [
+        {
+          "width": 455,
+          "overflow": 0
+        }
+      ],
+      "planCount": 0,
+      "preferenceCount": 0,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "todos-calendar",
+      "size": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "overflow": 0,
+      "dialogs": [],
+      "planCount": 0,
+      "preferenceCount": 0,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "activities-list",
+      "size": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "overflow": 0,
+      "dialogs": [],
+      "planCount": 0,
+      "preferenceCount": 0,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "activity-editor",
+      "size": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "overflow": 0,
+      "dialogs": [
+        {
+          "width": 436.8000183105469,
+          "overflow": 0
+        }
+      ],
+      "planCount": 0,
+      "preferenceCount": 0,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "activity-editor-submit",
+      "size": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "overflow": 0,
+      "dialogs": [
+        {
+          "width": 455,
+          "overflow": 0
+        }
+      ],
+      "planCount": 0,
+      "preferenceCount": 0,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "activity-detail",
+      "size": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "overflow": 0,
+      "dialogs": [],
+      "planCount": 1,
+      "preferenceCount": 1,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "period-plan",
+      "size": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "overflow": 0,
+      "dialogs": [],
+      "planCount": 1,
+      "preferenceCount": 1,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "period-progress",
+      "size": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "overflow": 0,
+      "dialogs": [
+        {
+          "width": 455,
+          "overflow": 0
+        }
+      ],
+      "planCount": 1,
+      "preferenceCount": 1,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "period-progress-submit",
+      "size": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "overflow": 0,
+      "dialogs": [
+        {
+          "width": 455,
+          "overflow": 0
+        }
+      ],
+      "planCount": 1,
+      "preferenceCount": 1,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "reward-claim",
+      "size": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "overflow": 0,
+      "dialogs": [
+        {
+          "width": 455,
+          "overflow": 0
+        }
+      ],
+      "planCount": 1,
+      "preferenceCount": 1,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "reward-receipt-submit",
+      "size": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "overflow": 0,
+      "dialogs": [
+        {
+          "width": 455,
+          "overflow": 0
+        }
+      ],
+      "planCount": 1,
+      "preferenceCount": 1,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "overview",
+      "size": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "overflow": 0,
+      "dialogs": [],
+      "planCount": 0,
+      "preferenceCount": 0,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "card-summary",
+      "size": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "overflow": 0,
+      "dialogs": [
+        {
+          "width": 880,
+          "overflow": 0
+        }
+      ],
+      "planCount": 0,
+      "preferenceCount": 0,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "plan-queued",
+      "size": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "overflow": 0,
+      "dialogs": [],
+      "planCount": 1,
+      "preferenceCount": 1,
+      "jobCount": 1,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "plan-failed",
+      "size": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "overflow": 0,
+      "dialogs": [],
+      "planCount": 1,
+      "preferenceCount": 1,
+      "jobCount": 1,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "plan-succeeded",
+      "size": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "overflow": 0,
+      "dialogs": [],
+      "planCount": 1,
+      "preferenceCount": 1,
+      "jobCount": 1,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "todos-list",
+      "size": "mobile",
+      "viewport": {
+        "width": 360,
+        "height": 800
+      },
+      "overflow": 0,
+      "dialogs": [],
+      "planCount": 0,
+      "preferenceCount": 0,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "custom-todo",
+      "size": "mobile",
+      "viewport": {
+        "width": 360,
+        "height": 800
+      },
+      "overflow": 0,
+      "dialogs": [
+        {
+          "width": 336,
+          "overflow": 0
+        }
+      ],
+      "planCount": 0,
+      "preferenceCount": 0,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "custom-todo-submit",
+      "size": "mobile",
+      "viewport": {
+        "width": 360,
+        "height": 800
+      },
+      "overflow": 0,
+      "dialogs": [
+        {
+          "width": 336,
+          "overflow": 0
+        }
+      ],
+      "planCount": 0,
+      "preferenceCount": 0,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "todos-calendar",
+      "size": "mobile",
+      "viewport": {
+        "width": 360,
+        "height": 800
+      },
+      "overflow": 0,
+      "dialogs": [],
+      "planCount": 0,
+      "preferenceCount": 0,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "activities-list",
+      "size": "mobile",
+      "viewport": {
+        "width": 360,
+        "height": 800
+      },
+      "overflow": 0,
+      "dialogs": [],
+      "planCount": 0,
+      "preferenceCount": 0,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "activity-editor",
+      "size": "mobile",
+      "viewport": {
+        "width": 360,
+        "height": 800
+      },
+      "overflow": 0,
+      "dialogs": [
+        {
+          "width": 322.55999755859375,
+          "overflow": 0
+        }
+      ],
+      "planCount": 0,
+      "preferenceCount": 0,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "activity-editor-submit",
+      "size": "mobile",
+      "viewport": {
+        "width": 360,
+        "height": 800
+      },
+      "overflow": 0,
+      "dialogs": [
+        {
+          "width": 336,
+          "overflow": 0
+        }
+      ],
+      "planCount": 0,
+      "preferenceCount": 0,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "activity-detail",
+      "size": "mobile",
+      "viewport": {
+        "width": 360,
+        "height": 800
+      },
+      "overflow": 0,
+      "dialogs": [],
+      "planCount": 1,
+      "preferenceCount": 1,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "period-plan",
+      "size": "mobile",
+      "viewport": {
+        "width": 360,
+        "height": 800
+      },
+      "overflow": 0,
+      "dialogs": [],
+      "planCount": 1,
+      "preferenceCount": 1,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "period-progress",
+      "size": "mobile",
+      "viewport": {
+        "width": 360,
+        "height": 800
+      },
+      "overflow": 0,
+      "dialogs": [
+        {
+          "width": 336,
+          "overflow": 0
+        }
+      ],
+      "planCount": 1,
+      "preferenceCount": 1,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "period-progress-submit",
+      "size": "mobile",
+      "viewport": {
+        "width": 360,
+        "height": 800
+      },
+      "overflow": 0,
+      "dialogs": [
+        {
+          "width": 336,
+          "overflow": 0
+        }
+      ],
+      "planCount": 1,
+      "preferenceCount": 1,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "reward-claim",
+      "size": "mobile",
+      "viewport": {
+        "width": 360,
+        "height": 800
+      },
+      "overflow": 0,
+      "dialogs": [
+        {
+          "width": 336,
+          "overflow": 0
+        }
+      ],
+      "planCount": 1,
+      "preferenceCount": 1,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "reward-receipt-submit",
+      "size": "mobile",
+      "viewport": {
+        "width": 360,
+        "height": 800
+      },
+      "overflow": 0,
+      "dialogs": [
+        {
+          "width": 336,
+          "overflow": 0
+        }
+      ],
+      "planCount": 1,
+      "preferenceCount": 1,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "overview",
+      "size": "mobile",
+      "viewport": {
+        "width": 360,
+        "height": 800
+      },
+      "overflow": 0,
+      "dialogs": [],
+      "planCount": 0,
+      "preferenceCount": 0,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "card-summary",
+      "size": "mobile",
+      "viewport": {
+        "width": 360,
+        "height": 800
+      },
+      "overflow": 0,
+      "dialogs": [
+        {
+          "width": 336,
+          "overflow": 0
+        }
+      ],
+      "planCount": 0,
+      "preferenceCount": 0,
+      "jobCount": 0,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "plan-queued",
+      "size": "mobile",
+      "viewport": {
+        "width": 360,
+        "height": 800
+      },
+      "overflow": 0,
+      "dialogs": [],
+      "planCount": 1,
+      "preferenceCount": 1,
+      "jobCount": 1,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "plan-failed",
+      "size": "mobile",
+      "viewport": {
+        "width": 360,
+        "height": 800
+      },
+      "overflow": 0,
+      "dialogs": [],
+      "planCount": 1,
+      "preferenceCount": 1,
+      "jobCount": 1,
+      "pageErrors": [],
+      "consoleErrors": []
+    },
+    {
+      "name": "plan-succeeded",
+      "size": "mobile",
+      "viewport": {
+        "width": 360,
+        "height": 800
+      },
+      "overflow": 0,
+      "dialogs": [],
+      "planCount": 1,
+      "preferenceCount": 1,
+      "jobCount": 1,
+      "pageErrors": [],
+      "consoleErrors": []
+    }
+  ]
+}

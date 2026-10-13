@@ -20,7 +20,7 @@ async function main() {
       )
     `);
 
-    const files = (await readdir(migrationsDir)).filter((name) => name.endsWith(".sql")).sort();
+    const files = (await readdir(migrationsDir)).filter((name) => name.endsWith(".sql") && !name.startsWith("._")).sort();
     for (const file of files) {
       const existing = await client.query("select 1 from _cardcalendar_migrations where name = $1", [file]);
       if (existing.rowCount) {

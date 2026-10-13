@@ -1,0 +1,15 @@
+.activities-workspace { min-width: 0; }
+.activity-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.activity-card, .period-card, .reward-card { padding: 20px; border: 1px solid var(--line); background: var(--paper); border-radius: 10px; }
+.activity-card p, .period-card p, .reward-card p { line-height: 1.8; font-size: 13px; overflow-wrap: anywhere; }
+.activity-card h2 { font-size: 16px; margin: 0; }
+.activity-progress { padding: 12px; margin: 14px 0; background: var(--soft); border-radius: 6px; }
+.activity-progress p { margin: 6px 0; }
+.activities-workspace .section-block { padding: 22px; margin-bottom: 20px; }
+.period-card, .reward-card { margin: 12px 0; }
+.period-card h3, .reward-card h3 { font-size: 14px; margin-top: 0; }
+.period-boundaries { display: grid; gap: 16px; margin: 16px 0; }
+.activities-workspace fieldset { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; margin: 12px 0; }
+.activities-workspace .node-pref input, .activities-workspace .form-grid input, .activities-workspace .form-grid select, .activities-workspace .form-grid textarea { min-width: 0; max-width: 100%; }
+@media (max-width: 980px) { .activity-list { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 680px) { .activities-workspace .welcome-row { flex-direction: column; align-items: stretch; gap: 16px; } .activities-workspace .section-block { padding: 16px; } .activity-card, .period-card, .reward-card { padding: 16px; } }

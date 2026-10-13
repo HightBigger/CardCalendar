@@ -1,3 +1,4 @@
+import { exportCatalogParticipation } from "../participation/catalog-export";
 import type { UserProfile } from "../auth/domain";
 import { authRepository } from "../auth/repository";
 import { cardRepository } from "../cards";
@@ -24,7 +25,9 @@ export async function exportUserData(userId: string) {
   const reminders = await reminderRepository.list(userId, false);
   const reminderRules = await reminderRuleRepository.listGlobal(userId);
   const auditLogs = await listAuditLogs(userId);
+  const catalogParticipation = await exportCatalogParticipation(userId);
   const result = {
+    ...(catalogParticipation ? { catalogParticipation } : {}),
     profile: toExportProfile(profile),
     cards,
     cycles,

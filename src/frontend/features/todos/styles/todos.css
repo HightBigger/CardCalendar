@@ -1,0 +1,71 @@
+.todo-workspace { min-width: 0; }
+.todo-workspace .welcome-row { align-items: flex-start; }
+.workspace-view { display: flex; gap: 5px; padding: 4px; margin-bottom: 20px; width: max-content; background: var(--soft); border: 1px solid var(--line); border-radius: 8px; }
+.workspace-view button { padding: 8px 24px; border: 0; color: var(--muted); background: transparent; border-radius: 5px; }
+.workspace-view button.active { color: var(--green-dark); background: var(--green-soft); font-weight: 650; }
+.todo-filters { display: flex; flex-wrap: wrap; gap: 12px; padding: 16px; border: 1px solid var(--line); background: var(--paper); border-radius: 10px; margin-bottom: 18px; }
+.todo-filters label { display: grid; gap: 6px; font-size: 12px; color: var(--muted); min-width: 100px; flex: 1 1 130px; }
+.todo-filters .todo-search { flex: 2 1 230px; }
+.todo-filters input, .todo-filters select { width: 100%; min-width: 0; max-width: 100%; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: var(--paper); color: var(--ink); }
+.todo-filters .checkbox-label { flex: 1 1 100%; }
+.todo-group { margin: 24px 0; }
+.todo-group h2 { font-size: 15px; display: flex; align-items: center; gap: 10px; margin: 0 0 12px; }
+.todo-group h2 span { color: var(--muted); font-size: 12px; font-weight: 500; }
+.todo-row { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(160px, .65fr) minmax(140px, .4fr); gap: 20px; padding: 18px; border: 1px solid var(--line); border-bottom-width: 0; background: var(--paper); align-items: start; }
+.todo-row:first-of-type { border-radius: 8px 8px 0 0; }
+.todo-row:last-of-type { border-bottom-width: 1px; border-radius: 0 0 8px 8px; }
+.todo-row:only-of-type { border-radius: 8px; }
+.todo-overdue { border-left: 3px solid var(--coral); }
+.todo-type { display: block; font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+.todo-title { display: inline-block; padding: 0; border: 0; background: transparent; font-weight: 650; font-size: 15px; line-height: 1.6; color: var(--ink); text-align: left; overflow-wrap: anywhere; }
+.todo-identity p { margin: 6px 0 0; font-size: 12px; line-height: 1.65; color: var(--muted); }
+.todo-identity .todo-summary { color: var(--ink); }
+.todo-date { display: grid; gap: 6px; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.todo-date strong { font-size: 13px; }
+.todo-overdue .todo-date strong { color: var(--coral); }
+.todo-date small { color: var(--muted); }
+.todo-actions { display: grid; gap: 10px; justify-items: start; }
+.todo-actions small { color: var(--muted); font-size: 11px; line-height: 1.6; }
+.todo-more summary { cursor: pointer; font-size: 12px; color: var(--muted); padding: 6px 0; }
+.todo-more > div { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+.workspace-count { color: var(--muted); font-size: 12px; }
+.todo-detail { display: grid; gap: 12px; }
+.todo-detail p { line-height: 1.8; margin: 0; }
+.todo-history { padding-left: 20px; display: grid; gap: 14px; }
+.todo-history li > span { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
+.todo-calendar .calendar-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+.todo-calendar .calendar-toolbar label { display: flex; align-items: center; gap: 8px; }
+.todo-calendar .calendar-toolbar input { min-width: 0; max-width: 170px; padding: 8px; border: 1px solid var(--line); border-radius: 5px; }
+.todo-calendar .calendar-toolbar span { font-size: 12px; color: var(--muted); }
+.todo-month { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.todo-week, .todo-weekdays { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.todo-weekdays { background: var(--soft); text-align: center; padding: 10px 0; font-size: 12px; color: var(--muted); }
+.todo-cell { min-width: 0; min-height: 115px; border-top: 1px solid var(--line); border-right: 1px solid var(--line); padding: 5px; }
+.todo-cell:last-child { border-right: 0; }
+.todo-cell.outside-month { background: var(--soft); }
+.todo-day { width: 100%; border: 0; padding: 4px; text-align: left; background: transparent; color: var(--ink); font-variant-numeric: tabular-nums; }
+.todo-day[aria-pressed=true] { background: var(--green-soft); border-radius: 4px; }
+.todo-day small { float: right; color: var(--muted); font-size: 10px; }
+.todo-cell-events { display: grid; gap: 4px; margin-top: 4px; }
+.todo-calendar-entry { min-width: 0; border: 0; background: var(--green-soft); color: var(--green-dark); font-size: 10px; padding: 4px; line-height: 1.6; text-align: left; overflow-wrap: anywhere; }
+.todo-calendar-entry.marker { background: var(--soft); color: var(--muted); border-left: 2px solid var(--line); }
+.calendar-day-detail { margin-top: 20px; padding: 18px; border: 1px solid var(--line); border-radius: 8px; }
+.calendar-day-detail h2 { font-size: 16px; }
+.calendar-day-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 0; }
+.calendar-day-row > span { color: var(--muted); font-size: 11px; }
+.undated-link { margin-bottom: 16px; }
+@media (max-width: 980px) { .todo-row { grid-template-columns: minmax(180px, 1fr) minmax(150px, .7fr); gap: 14px; } .todo-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; } }
+@media (max-width: 680px) {
+ .todo-workspace .welcome-row { flex-direction: column; gap: 16px; }
+ .todo-filters { padding: 12px; gap: 10px; }
+ .todo-filters label { flex-basis: calc(50% - 10px); min-width: 0; }
+ .todo-filters .todo-search { flex-basis: 100%; }
+ .todo-row { grid-template-columns: minmax(0, 1fr); padding: 15px; border-bottom-width: 1px; border-radius: 8px !important; margin-bottom: 10px; }
+ .todo-actions { grid-column: auto; }
+ .todo-title { font-size: 15px; }
+ .todo-cell { min-height: 62px; padding: 2px; }
+ .todo-cell-events { display: none; }
+ .todo-day { min-height: 50px; padding: 4px; display: grid; align-content: start; gap: 5px; text-align: center; }
+ .todo-day small { float: none; }
+ .todo-calendar .calendar-toolbar span { width: 100%; }
+}

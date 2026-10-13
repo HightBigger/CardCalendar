@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { eq } from "drizzle-orm";
 import { cards, feeCycles, feeEvents, progressEntries, reminderRules, reminders, sessions } from "../../../db/schema";
 import { authRepository } from "../auth";
@@ -61,6 +62,20 @@ export async function runAccountCleanup() {
 async function cleanupPostgres(userId: string) {
   const db = getDatabase().db;
   await db.transaction(async (tx) => {
+    const catalogTable = await tx.execute(sql`select to_regclass('private_campaigns') as name`);
+    if ((catalogTable.rows[0] as {name?:string})?.name) {
+      const nodes = await tx.execute(sql`select to_regclass('business_date_nodes') as name`);
+      if ((nodes.rows[0] as {name?:string})?.name) {
+        await tx.execute(sql`delete from todo_notification_schedules where owner_user_id=${userId}::uuid and (action_id in (select id from todo_actions where owner_user_id=${userId}::uuid and type='custom') or node_id in (select id from business_date_nodes where owner_user_id=${userId}::uuid and source_kind='custom'))`);
+        await tx.execute(sql`delete from todo_actions where owner_user_id=${userId}::uuid and type='custom'`);
+        await tx.execute(sql`delete from business_date_nodes where owner_user_id=${userId}::uuid and source_kind='custom'`);
+      }
+      await tx.execute(sql`delete from activity_participations where owner_user_id=${userId}::uuid`);
+      await tx.execute(sql`delete from private_campaigns where owner_user_id=${userId}::uuid`);
+      await tx.execute(sql`delete from catalog_command_results where owner_user_id=${userId}::uuid`);
+      await tx.execute(sql`delete from catalog_personal_outbox where owner_user_id=${userId}::uuid`);
+      await tx.execute(sql`update user_role_grants set revoked_at=now(),version=version+1 where user_id=${userId}::uuid`);
+    }
     await tx.delete(progressEntries).where(eq(progressEntries.userId, userId));
     await tx.delete(reminderRules).where(eq(reminderRules.userId, userId));
     await tx.delete(reminders).where(eq(reminders.userId, userId));

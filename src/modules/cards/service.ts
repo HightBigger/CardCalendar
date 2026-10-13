@@ -8,6 +8,20 @@ import { feeEventRepository, FeeEventRepository, reconcileCardEvents } from "../
 import { ensureFeeEventReminders, getFeeEventReminderDays, reminderRepository, ReminderRepository, reminderSchedule } from "../reminders";
 import { authRepository, AuthRepository } from "../auth";
 import { recordAudit } from "../../shared/audit";
+import {
+  archiveOptions,
+  archivePostgresCard,
+  archivePostgresCardInTransaction,
+  type ArchiveOptions,
+  type ArchivedCard,
+} from "./catalog-archive";
+import { getDatabase } from "../../shared/db/client";
+import type { Pool } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
+import * as schema from "../../../db/schema";
+import { createDrizzleRepositories } from "../../shared/db/repositories";
+import { CatalogRepository } from "../activity-catalog/repository";
+import { reminderRuleRepository, type ReminderRuleRepository } from "../reminders/rules";
 
 export function parseCreateCardInput(value: unknown): CreateCardInput {
   const body = assertRecord(value);
@@ -107,14 +121,54 @@ export async function updateCard(
   events: FeeEventRepository = feeEventRepository,
   reminders: ReminderRepository = reminderRepository,
   auth: AuthRepository = authRepository,
+  pool?: Pool,
 ): Promise<Card> {
+  if (pool || (repository === cardRepository && process.env.USE_DATABASE === "true")) {
+    const catalog = new CatalogRepository(pool ?? getDatabase().pool);
+    return catalog.transaction(async (tx) => {
+      const user = (
+        await tx.query(
+          "select timezone from users where id=$1 and status='active' and deleted_at is null for share",
+          [userId],
+        )
+      ).rows[0];
+      if (!user) throw new AppError("UNAUTHENTICATED", "账号不可用");
+      await tx.query("select id from cards where id=$1 and user_id=$2 for update", [cardId, userId]);
+      const repositories = createDrizzleRepositories(drizzle(tx, { schema }));
+      const current = await getCard(userId, cardId, repositories.cards);
+      const patch = assertRecord(value);
+      const input = parseCreateCardInput({ ...current, ...patch });
+      const status = parseCardStatus(patch.status) ?? current.status;
+      const archiving = current.status !== "archived" && status === "archived";
+      const updated = await repositories.cards.update(userId, cardId, {
+        ...input,
+        ...(status !== current.status && !archiving ? { status } : {}),
+      });
+      if (!updated) throw new AppError("NOT_FOUND", "卡片不存在");
+      await syncCardScheduleAfterUpdate(
+        userId, current, input, repositories.cycles, repositories.feeEvents,
+        repositories.reminders, auth, status, user.timezone, repositories.reminderRules,
+      );
+      await tx.query(
+        "insert into audit_logs(user_id,actor_type,actor_id,action,entity_type,entity_id,metadata) values($1,'user',$1,'card.updated','card',$2,$3)",
+        [userId, cardId, { changedFields: Object.keys(patch).filter((field) => field !== "last4") }],
+      );
+      return archiving
+        ? archivePostgresCardInTransaction(tx, catalog, userId, cardId)
+        : updated;
+    });
+  }
   const current = await getCard(userId, cardId, repository);
   const patch = assertRecord(value);
   const input = parseCreateCardInput({ ...current, ...patch });
-  const status = parseCardStatus(patch.status);
-  const updated = await repository.update(userId, cardId, { ...input, ...(status ? { status } : {}) });
+  const status = parseCardStatus(patch.status) ?? current.status;
+  const archiving = current.status !== "archived" && status === "archived";
+  const updated = await repository.update(userId, cardId, {
+    ...input,
+    ...(status !== current.status && !archiving ? { status } : {}),
+  });
   if (!updated) throw new AppError("NOT_FOUND", "卡片不存在");
-  await syncCardScheduleAfterUpdate(userId, current, input, cycles, events, reminders, auth);
+  await syncCardScheduleAfterUpdate(userId, current, input, cycles, events, reminders, auth, status);
   await recordAudit({
     userId,
     actorType: "user",
@@ -124,14 +178,18 @@ export async function updateCard(
     entityId: cardId,
     metadata: { changedFields: Object.keys(patch).filter((field) => field !== "last4") },
   });
-  return updated;
+  return archiving ? archiveCard(userId, cardId, repository, reminders) : updated;
 }
 export async function archiveCard(
   userId: string,
   cardId: string,
   repository: CardRepository = cardRepository,
   reminders: ReminderRepository = reminderRepository,
-): Promise<Card> {
+  options:ArchiveOptions = {},
+  pool?:import("pg").Pool,
+): Promise<ArchivedCard> {
+  const archive=archiveOptions(options);
+  if (pool || repository===cardRepository && process.env.USE_DATABASE==="true") return archivePostgresCard(pool ?? getDatabase().pool,userId,cardId,options);
   const card = await repository.update(userId, cardId, { status: "archived" });
   if (!card) throw new AppError("NOT_FOUND", "卡片不存在");
   const linked = await reminders.list(userId, false);
@@ -147,9 +205,9 @@ export async function archiveCard(
     action: "card.archived",
     entityType: "card",
     entityId: cardId,
-    metadata: { status: "archived" },
+    metadata: { status: "archived",...archive },
   });
-  return card;
+  return {...card,rewardReminderPolicy:archive.rewardReminderPolicy,invalidated:["cards","annual-fees","activities","spend-tasks","rewards","todos","notifications"]};
 }
 
 export async function restoreCard(
@@ -224,6 +282,9 @@ async function syncCardScheduleAfterUpdate(
   events: FeeEventRepository,
   reminders: ReminderRepository,
   auth: AuthRepository,
+  status: CardStatus = current.status,
+  timezoneOverride?: string,
+  rules: ReminderRuleRepository = reminderRuleRepository,
 ) {
   const cardCycles = await cycles.listByCard(userId, current.id);
   const activeCycles = cardCycles
@@ -262,21 +323,22 @@ async function syncCardScheduleAfterUpdate(
   });
   if (!updatedEvent) throw new AppError("NOT_FOUND", "年费事件不存在");
 
-  const profile = await auth.findUserById(userId);
-  const timezone = profile?.timezone ?? "Asia/Shanghai";
+  // Editing fee facts on an archived card must not reactivate its reminders.
+  if (status === "archived") return;
+
+  const timezone = timezoneOverride ?? (await auth.findUserById(userId))?.timezone ?? "Asia/Shanghai";
   const linked = await reminders.list(userId, false);
-  await Promise.all(
-    linked
-      .filter((reminder) => reminder.feeEventId === updatedEvent.id && (reminder.status === "pending" || reminder.status === "snoozed"))
-      .map(async (reminder) => {
-        const next = reminderSchedule(input.nextFeeDate, timezone, [reminder.daysBefore])[0];
-        return reminders.save({
-          ...reminder,
-          scheduledFor: next.scheduledFor,
-          status: "pending",
-          snoozedUntil: undefined,
-        });
-      }),
-  );
-  await ensureFeeEventReminders(userId, updatedEvent, timezone, undefined, reminders);
+  for (const reminder of linked.filter((reminder) =>
+    reminder.feeEventId === updatedEvent.id &&
+    (reminder.status === "pending" || reminder.status === "snoozed"),
+  )) {
+    const next = reminderSchedule(input.nextFeeDate, timezone, [reminder.daysBefore])[0];
+    await reminders.save({
+      ...reminder,
+      scheduledFor: next.scheduledFor,
+      status: "pending",
+      snoozedUntil: undefined,
+    });
+  }
+  await ensureFeeEventReminders(userId, updatedEvent, timezone, undefined, reminders, rules);
 }

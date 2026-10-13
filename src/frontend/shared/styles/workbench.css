@@ -1,0 +1,26 @@
+.skip-link { position: fixed; top: -100px; left: 16px; z-index: 1000; padding: 12px 16px; background: var(--paper); color: var(--ink); border: 1px solid var(--line); }
+.skip-link:focus { top: 12px; }
+.nav-preview { text-decoration: none; }
+.workspace-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.date-field, .node-pref, .snooze-form { min-width: 0; margin: 0; padding: 14px; border: 1px solid var(--line); border-radius: 8px; display: grid; gap: 10px; }
+.date-field select, .date-field input { width: 100%; min-width: 0; }
+.date-field small { color: var(--muted); }
+.checkbox-label { display: flex !important; align-items: center; gap: 8px; }
+.checkbox-label input[type=checkbox] { width: 18px; min-width: 18px; flex: 0 0 18px; }
+.progress-facts, .reward-panel dl, .todo-detail dl { display: grid; grid-template-columns: minmax(90px, 1fr) 2fr; gap: 10px 20px; line-height: 1.6; }
+.progress-facts dt, .reward-panel dt, .todo-detail dt { color: var(--muted); }
+.progress-facts dd, .reward-panel dd, .todo-detail dd { margin: 0; overflow-wrap: anywhere; }
+.qualification-form, .reward-claim, .reward-receipt { padding-top: 20px; margin-top: 20px; border-top: 1px solid var(--line); }
+.qualification-form label, .reward-panel label { display: grid; gap: 8px; margin-bottom: 12px; }
+.node-pref { margin-bottom: 12px; }
+.node-pref label { display: grid; gap: 8px; }
+.job-state { padding: 16px; margin: 16px 0; background: var(--soft); border: 1px solid var(--line); border-radius: 8px; }
+.fixture-banner { padding: 12px 16px; border: 1px solid var(--amber); background: var(--amber-soft); border-radius: 8px; margin-bottom: 20px; line-height: 1.7; }
+.fixture-banner a { margin-right: 16px; }
+button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+@media (max-width: 680px) {
+  .workspace-tools { width: 100%; }
+  .workspace-tools .primary-button { flex: 1; }
+  .date-field, .node-pref { padding: 10px; }
+  .progress-facts, .reward-panel dl, .todo-detail dl { grid-template-columns: minmax(85px, 1fr) 2fr; gap: 8px; }
+}

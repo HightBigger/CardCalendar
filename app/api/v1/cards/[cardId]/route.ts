@@ -10,9 +10,9 @@ export async function GET(request: Request, context: Context): Promise<Response>
 export async function PATCH(request: Request, context: Context): Promise<Response> { try { return json(await updateCard(await requireUserId(request), await cardId(context), await request.json())); } catch (error) { return errorResponse(error); } }
 export async function POST(request: Request, context: Context): Promise<Response> {
   try {
-    const body = await request.json() as { action?: string };
+    const body = await request.json() as { action?: string;rewardReminderPolicy?:"keep"|"stop";note?:string };
     const id = await cardId(context);
-    if (body.action === "archive") return json(await archiveCard(await requireUserId(request), id));
+    if (body.action === "archive") return json(await archiveCard(await requireUserId(request), id,undefined,undefined,{rewardReminderPolicy:body.rewardReminderPolicy,note:body.note,idempotencyKey:request.headers.get("Idempotency-Key") ?? undefined}));
     if (body.action === "restore") return json(await restoreCard(await requireUserId(request), id));
     return new Response(
       JSON.stringify({

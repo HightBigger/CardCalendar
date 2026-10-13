@@ -1,3 +1,4 @@
+import { runCatalogDispatch } from "./catalog";
 import { PgBoss } from "pg-boss";
 import { runCalendarReconcile, runReminderDispatch } from "./jobs";
 import { runAccountCleanup } from "../modules/account";
@@ -9,6 +10,7 @@ const QUEUES = [
   "reminder.dispatch",
   "account.cleanup",
   "export.generate",
+  "catalog.dispatch",
 ] as const;
 
 async function main() {
@@ -27,6 +29,8 @@ async function main() {
     await boss.schedule("calendar.reconcile", "0 2 * * *");
     await boss.schedule("reminder.dispatch", "*/5 * * * *");
     await boss.schedule("account.cleanup", "0 3 * * *");
+    await boss.schedule("catalog.dispatch", "* * * * *");
+    await boss.work("catalog.dispatch", async () => runCatalogDispatch());
     await boss.work("calendar.reconcile", async () => runCalendarReconcile());
     await boss.work("reminder.dispatch", async () => runReminderDispatch());
     await boss.work("account.cleanup", async () => runAccountCleanup());

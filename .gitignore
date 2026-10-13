@@ -1,5 +1,7 @@
 node_modules/
 .next/
+.next-acceptance-*/
+.next-http-smoke-*/
 out/
 .env
 .env.*
@@ -11,3 +13,7 @@ playwright-report/
 drizzle/
 *.log
 *.tsbuildinfo
+
+# macOS metadata on external volumes
+._*
+.DS_Store

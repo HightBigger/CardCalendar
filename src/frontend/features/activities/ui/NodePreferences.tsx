@@ -1,0 +1,11 @@
+"use client";
+import { useState } from "react";
+import type { NodePreference } from "../../../../contracts/activities";
+export function NodePreferences({ initial, busy, error, onSave }: { initial: NodePreference[]; busy: boolean; error?: string; onSave: (prefs: NodePreference[]) => Promise<boolean> }) {
+  const [prefs, setPrefs] = useState(initial.map((pref) => ({ ...pref, notifyDays: pref.notifyDaysBefore.join(",") })));
+  const [message, setMessage] = useState("");
+  const [validation, setValidation] = useState("");
+  const patch = (index: number, changes: Partial<typeof prefs[number]>) => setPrefs((old) => old.map((pref, i) => i === index ? { ...pref, ...changes } : pref));
+  async function save() { setValidation(""); setMessage(""); const values = prefs.map((pref) => ({ nodeKind: pref.nodeKind, label: pref.label, showInCalendar: pref.showInCalendar, createTodo: pref.createTodo, notifyDaysBefore: pref.notifyDays.trim() ? pref.notifyDays.split(",").map((day) => Number(day.trim())) : [] })); if (values.some((pref) => pref.notifyDaysBefore.some((day) => !Number.isInteger(day) || day < 0 || day > 3650) || new Set(pref.notifyDaysBefore).size !== pref.notifyDaysBefore.length)) { setValidation("提前天数需为不重复的 0—3650 整数，用逗号分隔"); return; } if (await onSave(values)) setMessage("节点偏好已保存"); }
+  return <section className="section-block" aria-label="日历与待办节点偏好"><h2>日期节点与通知偏好</h2><p>日历展示、待办生成和提前通知分别选择。活动不套用年费提醒节点。</p>{prefs.map((pref, index) => <fieldset className="node-pref" key={pref.nodeKind}><legend>{pref.label}</legend><label className="checkbox-label"><input type="checkbox" checked={pref.showInCalendar} onChange={(event) => patch(index, { showInCalendar: event.target.checked })} />进入日历</label><label className="checkbox-label"><input type="checkbox" checked={pref.createTodo} onChange={(event) => patch(index, { createTodo: event.target.checked })} />生成待办</label><label>提前通知天数<input value={pref.notifyDays} onChange={(event) => patch(index, { notifyDays: event.target.value })} placeholder="留空表示不提前通知" /></label></fieldset>)}{(validation || error) && <p className="form-error" role="alert">{validation || error}</p>}{message && <p role="status">{message}</p>}<button className="secondary-button" disabled={busy} onClick={save}>保存节点偏好</button></section>;
+}
