@@ -65,4 +65,4 @@ docker compose --env-file .env.production -f docker-compose.production.yml logs 
 
 ## CI 门禁
 
-`.github/workflows/ci.yml` 在 pull request 和 `main` push 上执行 lockfile 安装、TypeScript 检查、Vitest、临时 PostgreSQL 迁移/持久化验证、生产构建、Web/worker 镜像构建，以及生产依赖的 high/critical 漏洞审计。发布平台应只接受通过 CI 的提交。
+`.github/workflows/ci.yml` 仅在推送 tag 时执行（包括带 `/` 的 tag 名称）；普通分支推送和 pull request 不触发。流程执行 lockfile 安装、TypeScript 检查、Vitest、临时 PostgreSQL 迁移/持久化验证、生产构建、Web/worker 镜像构建，以及生产依赖的 high/critical 漏洞审计。发布平台应只接受通过 CI 的 tag 对应提交。
