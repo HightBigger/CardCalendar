@@ -57,7 +57,15 @@ if [[ ! -e "$deploy_env_file" ]]; then
   printf '已生成 %s；密码仅保存在该文件中。\n' "$deploy_env_file"
 fi
 
-deploy_revision="$(git rev-parse --short=12 HEAD 2>/dev/null || date -u +%Y%m%d%H%M%S)"
+if [[ -f .cardfolio-version ]]; then
+  deploy_revision="$(cat .cardfolio-version)"
+else
+  deploy_revision="$(git rev-parse --short=12 HEAD 2>/dev/null || date -u +%Y%m%d%H%M%S)"
+fi
+if [[ ! "$deploy_revision" =~ ^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$ ]]; then
+  printf '无效的发布版本标识。\n' >&2
+  exit 1
+fi
 export WEB_IMAGE="cardcalendar-web:$deploy_revision"
 export WORKER_IMAGE="cardcalendar-worker:$deploy_revision"
 export APP_DOMAIN="$deploy_domain"
@@ -91,6 +99,8 @@ chmod 700 .deploy-backups
 deploy_backup=".deploy-backups/$(date -u +%Y%m%dT%H%M%SZ)-$deploy_revision-$$.dump"
 (
   umask 077
+  # Expand database settings inside the container, never on the host.
+  # shellcheck disable=SC2016
   compose exec -T postgres sh -c 'exec pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$deploy_backup"
 )
 if [[ ! -s "$deploy_backup" ]]; then

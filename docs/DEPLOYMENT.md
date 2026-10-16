@@ -4,45 +4,52 @@
 
 先将域名解析到服务器 IP，放行 TCP 80/443。脚本默认启动 Caddy 自动配置 HTTPS；如果已有 Nginx、宝塔或其他 HTTPS 入口，使用 `--no-proxy`，将已有入口转发到 `127.0.0.1:3000`。
 
-开发机先提交并推送发布代码，再推送版本标签（下面以 `v0.1.2` 为例）：
+在已安装 Docker Engine 24+、Compose v2.20+、curl、tar 和 OpenSSL，且当前用户可以运行 Docker 的 Linux 服务器上，粘贴这一条命令：
 
 ```bash
-git push origin main
-git tag -a v0.1.2 -m "Cardfolio v0.1.2"
-git push origin v0.1.2
+curl -fsSL https://raw.githubusercontent.com/HightBigger/CardCalendar/v0.1.3/scripts/install.sh | bash -s -- cards.example.com
 ```
 
-GitHub Actions 全部通过后，在已安装 Docker Engine 24+、Compose v2.20+、Git 和 OpenSSL 的 Linux 服务器执行：
+将 `cards.example.com` 替换为实际域名。不需要 Git、Node.js 或手动克隆仓库。安装脚本会下载固定 tag 的源码，在服务器构建 Web/worker 镜像；首次构建需要几分钟，服务器需要能访问 GitHub、Docker Hub 和 npm。
+
+默认安装目录为 `~/cardfolio`：
+
+```text
+~/cardfolio/
+  .env.production       # 配置与随机数据库密码，权限 600
+  .deploy-backups/      # 每次迁移前的数据库备份
+  releases/v0.1.3/      # 固定版本源码
+  current -> releases/v0.1.3
+```
+
+脚本自动构建镜像、启动数据库、停止应用写入、备份数据库、执行迁移，再等待 Web、数据库和 worker 心跳就绪。镜像使用发布版本作为标签。Caddy 启动后自动申请证书，可用 `curl --fail https://cards.example.com/api/readyz` 验证公开入口。数据库和证书保存在 Docker 的持久卷中。
+
+默认启用待办、私人活动和银行活动浏览；周期执行、目录管理和目录加入仍分别由 `FEATURE_ACTIVITY_PERIODS`、`FEATURE_CATALOG_MANAGE`、`FEATURE_CATALOG_JOIN` 控制，默认关闭。全部开关会传入 Web、worker 和迁移容器。启用目录管理后还需通过 `scripts/catalog-role.ts` 为具体用户授予管理角色。
+
+已有 HTTPS 入口时，在同一命令末尾追加 `--no-proxy`；自定义目录可追加 `--dir /opt/cardfolio`（需对该目录有写入权限）：
 
 ```bash
-git clone --branch v0.1.2 --depth 1 https://github.com/HightBigger/CardCalendar.git
+curl -fsSL https://raw.githubusercontent.com/HightBigger/CardCalendar/v0.1.3/scripts/install.sh | bash -s -- cards.example.com --no-proxy --dir /opt/cardfolio
+```
+
+重复执行同一命令会保留配置、备份和数据库卷，也可用于失败后重试。安装目录设有锁，同一时间只允许一次安装。下载或解压失败不会执行部署；构建失败不会停止现有应用；备份或迁移失败会停止发布，应用保持停止以便排查。`current` 只在部署通过后更新；源码目录切换不等于数据库回滚。脚本管理 Compose 内置的 PostgreSQL；使用外部托管数据库时按下方手动流程部署。
+
+后续更新时，使用新版本发布说明提供的命令，沿用同一个域名、安装目录和 `--no-proxy` 选项。各版本共享根目录的配置和备份，旧版本源码和镜像保留。
+
+也支持从 Git 仓库手动部署：
+
+```bash
+git clone --branch v0.1.3 --depth 1 https://github.com/HightBigger/CardCalendar.git
 cd CardCalendar
 bash scripts/deploy.sh cards.example.com
 ```
 
-将 `cards.example.com` 替换为实际域名。脚本会自动生成权限为 `600` 的 `.env.production` 和随机数据库密码，按当前提交生成 Web/worker 镜像标签，构建镜像、启动数据库、停止应用写入、备份数据库、执行迁移，再等待 Web、数据库和 worker 心跳就绪。Caddy 启动后自动申请证书，可用 `curl --fail https://cards.example.com/api/readyz` 验证公开入口。
+Git 克隆方式将配置和备份放在仓库根目录，镜像使用提交 SHA 标签。不要把一键安装命令的 `--dir` 指向已有 Git 仓库；继续使用仓库中的 `scripts/deploy.sh` 更新。
 
-默认启用待办、私人活动和银行活动浏览；周期执行、目录管理和目录加入仍分别由 `FEATURE_ACTIVITY_PERIODS`、`FEATURE_CATALOG_MANAGE`、`FEATURE_CATALOG_JOIN` 控制，默认关闭。全部开关会传入 Web、worker 和迁移容器。启用目录管理后还需通过 `scripts/catalog-role.ts` 为具体用户授予管理角色。
-
-已有 HTTPS 入口时运行：
+一键安装后排查日志（使用 `--no-proxy` 时去掉第二个 `-f` 和 `caddy`，自定义目录需对应修改）：
 
 ```bash
-bash scripts/deploy.sh cards.example.com --no-proxy
-```
-
-重复执行会保留 `.env.production` 和数据库卷，迁移前将数据库备份到 `.deploy-backups/`，已有镜像按提交保留。构建失败不会停止现有应用；备份或迁移失败会停止发布，应用保持停止以便排查。脚本管理 Compose 内置的 PostgreSQL；使用外部托管数据库时按下方手动流程部署。
-
-后续更新到新的、已通过 CI 的 tag 后再次运行脚本：
-
-```bash
-git fetch --tags
-git checkout --detach v0.1.3
-bash scripts/deploy.sh cards.example.com
-```
-
-排查日志（使用 `--no-proxy` 时去掉第二个 `-f` 和 `caddy`）：
-
-```bash
+cd ~/cardfolio/current
 APP_DOMAIN=cards.example.com docker compose --env-file .env.production -f docker-compose.production.yml -f docker-compose.https.yml logs --tail=100 web worker caddy
 ```
 
@@ -84,9 +91,9 @@ docker compose --env-file .env.production -f docker-compose.production.yml up -d
 
 对于外部托管的 PostgreSQL，不启动 Compose 中的 `postgres`，将 `DATABASE_URL` 改为托管库的 TLS 连接串，并使用 `docker compose ... run --rm --no-deps migrate` 防止 Compose 自动启动本地数据库，再在同一受控网络内运行 Web 和 worker。
 
-样例中的 PostgreSQL tag 用于快速启动。一键脚本按提交 SHA 标记本地构建的应用镜像，保留上一版以便回滚；使用镜像仓库发布时，将 `POSTGRES_IMAGE`、`WEB_IMAGE` 和 `WORKER_IMAGE` 固定为已验证的 digest，避免可变 tag 指向其他镜像。
+样例中的 PostgreSQL tag 用于快速启动。一键脚本按发布版本（Git 克隆方式为提交 SHA）标记本地构建的应用镜像，保留上一版以便回滚；使用镜像仓库发布时，将 `POSTGRES_IMAGE`、`WEB_IMAGE` 和 `WORKER_IMAGE` 固定为已验证的 digest，避免可变 tag 指向其他镜像。
 
-一键脚本在服务器从代码构建，以提交 SHA 标记应用镜像。当前 CI 只验证和构建镜像，不上传镜像仓库，也不连接服务器自动部署；推送 tag 后仍需在服务器运行脚本。
+一键脚本在服务器从代码构建。当前 CI 只验证和构建镜像，不上传镜像仓库，也不连接服务器自动部署；推送 tag 后仍需在服务器运行安装命令。
 
 ## 发布、验证与回滚
 
@@ -114,3 +121,7 @@ docker compose --env-file .env.production -f docker-compose.production.yml logs 
 ## CI 门禁
 
 `.github/workflows/ci.yml` 仅在推送 tag 时执行（包括带 `/` 的 tag 名称）；普通分支推送和 pull request 不触发。流程执行 lockfile 安装、TypeScript 检查、Vitest、临时 PostgreSQL 迁移/持久化验证、生产构建、Web/worker 镜像构建，以及生产依赖的 high/critical 漏洞审计。发布平台应只接受通过 CI 的 tag 对应提交。
+
+发布新版本时先将 `scripts/install.sh` 中的 `install_version` 和本文安装链接更新为新版本，再提交代码、创建并推送同名 tag；不要移动已发布的 tag。待 tag 的 CI 全部通过后再使用安装命令。
+
+修改安装或部署脚本时，运行 `bash scripts/verify-install.sh` 检查安装目录、配置保留、并发锁和失败后的重试行为。该检查使用本地源码包并模拟 Docker 操作，不启动服务；实际镜像构建由 CI 验证。
