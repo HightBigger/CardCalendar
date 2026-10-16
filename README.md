@@ -13,7 +13,7 @@ MVP 已完成并形成可运行基线，具备真实账号会话、信用卡管�
 Linux 服务器安装 Docker 和 Compose 插件后，将域名解析到服务器并放行 TCP 80/443，替换下面的域名后执行：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/HightBigger/CardCalendar/v0.1.3/scripts/install.sh | bash -s -- cards.example.com
+curl -fsSL https://raw.githubusercontent.com/HightBigger/CardCalendar/v0.1.4/scripts/install.sh | bash -s -- cards.example.com
 ```
 
 自动下载版本、生成配置和数据库密码、构建镜像、迁移数据库并启动 HTTPS。默认安装到 `~/cardfolio`，重跑会保留配置和数据；已有反向代理可追加 `--no-proxy`。完整参数、更新和运维见 [部署说明](./docs/DEPLOYMENT.md)。

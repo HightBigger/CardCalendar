@@ -13,6 +13,9 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
 FROM dependencies AS build
 COPY . .
 RUN mkdir -p public && npm run build
+# next start loads the config again; production dependencies omit TypeScript.
+# Compile the same config during the build so startup never installs packages.
+RUN node -e "const fs = require('node:fs'); const ts = require('typescript'); fs.writeFileSync('next.config.mjs', ts.transpileModule(fs.readFileSync('next.config.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText);"
 
 FROM ${NODE_IMAGE} AS production-dependencies
 WORKDIR /app
@@ -54,7 +57,8 @@ ENV NODE_ENV=production \
 COPY --from=production-dependencies --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/.next ./.next
 COPY --from=build --chown=node:node /app/public ./public
-COPY --chown=node:node package.json package-lock.json next.config.ts ./
+COPY --chown=node:node package.json package-lock.json ./
+COPY --from=build --chown=node:node /app/next.config.mjs ./next.config.mjs
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

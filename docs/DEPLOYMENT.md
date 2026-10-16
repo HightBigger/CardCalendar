@@ -7,7 +7,7 @@
 在已安装 Docker Engine 24+、Compose v2.20+、curl、tar 和 OpenSSL，且当前用户可以运行 Docker 的 Linux 服务器上，粘贴这一条命令：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/HightBigger/CardCalendar/v0.1.3/scripts/install.sh | bash -s -- cards.example.com
+curl -fsSL https://raw.githubusercontent.com/HightBigger/CardCalendar/v0.1.4/scripts/install.sh | bash -s -- cards.example.com
 ```
 
 将 `cards.example.com` 替换为实际域名。不需要 Git、Node.js 或手动克隆仓库。安装脚本会下载固定 tag 的源码，在服务器构建 Web/worker 镜像；首次构建需要几分钟，服务器需要能访问 GitHub、Docker Hub 和 npm。
@@ -18,8 +18,8 @@ curl -fsSL https://raw.githubusercontent.com/HightBigger/CardCalendar/v0.1.3/scr
 ~/cardfolio/
   .env.production       # 配置与随机数据库密码，权限 600
   .deploy-backups/      # 每次迁移前的数据库备份
-  releases/v0.1.3/      # 固定版本源码
-  current -> releases/v0.1.3
+  releases/v0.1.4/      # 固定版本源码
+  current -> releases/v0.1.4
 ```
 
 脚本自动构建镜像、启动数据库、停止应用写入、备份数据库、执行迁移，再等待 Web、数据库和 worker 心跳就绪。镜像使用发布版本作为标签。Caddy 启动后自动申请证书，可用 `curl --fail https://cards.example.com/api/readyz` 验证公开入口。数据库和证书保存在 Docker 的持久卷中。
@@ -29,7 +29,7 @@ curl -fsSL https://raw.githubusercontent.com/HightBigger/CardCalendar/v0.1.3/scr
 已有 HTTPS 入口时，在同一命令末尾追加 `--no-proxy`；自定义目录可追加 `--dir /opt/cardfolio`（需对该目录有写入权限）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/HightBigger/CardCalendar/v0.1.3/scripts/install.sh | bash -s -- cards.example.com --no-proxy --dir /opt/cardfolio
+curl -fsSL https://raw.githubusercontent.com/HightBigger/CardCalendar/v0.1.4/scripts/install.sh | bash -s -- cards.example.com --no-proxy --dir /opt/cardfolio
 ```
 
 重复执行同一命令会保留配置、备份和数据库卷，也可用于失败后重试。安装目录设有锁，同一时间只允许一次安装。下载或解压失败不会执行部署；构建失败不会停止现有应用；备份或迁移失败会停止发布，应用保持停止以便排查。`current` 只在部署通过后更新；源码目录切换不等于数据库回滚。脚本管理 Compose 内置的 PostgreSQL；使用外部托管数据库时按下方手动流程部署。
@@ -39,7 +39,7 @@ curl -fsSL https://raw.githubusercontent.com/HightBigger/CardCalendar/v0.1.3/scr
 也支持从 Git 仓库手动部署：
 
 ```bash
-git clone --branch v0.1.3 --depth 1 https://github.com/HightBigger/CardCalendar.git
+git clone --branch v0.1.4 --depth 1 https://github.com/HightBigger/CardCalendar.git
 cd CardCalendar
 bash scripts/deploy.sh cards.example.com
 ```

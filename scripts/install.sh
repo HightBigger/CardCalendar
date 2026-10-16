@@ -4,7 +4,7 @@ main() (
   set -Eeuo pipefail
   umask 077
 
-  install_version='v0.1.3'
+  install_version='v0.1.4'
   install_domain=''
   install_dir="${CARDFOLIO_INSTALL_DIR:-$HOME/cardfolio}"
   install_no_proxy=false
