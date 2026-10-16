@@ -1,6 +1,8 @@
 .git
 .github
 .next
+.next-acceptance-*
+.next-http-smoke-*
 node_modules
 coverage
 test-results
@@ -12,6 +14,9 @@ drizzle
 .env.*
 *.log
 *.tsbuildinfo
+.deploy-backups
+._*
+.DS_Store
 
 docs
 e2e

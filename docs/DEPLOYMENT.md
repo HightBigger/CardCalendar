@@ -1,4 +1,50 @@
-# CardCalendar 部署与运行
+# Cardfolio 部署与运行
+
+## Linux + Docker 一键部署
+
+先将域名解析到服务器 IP，放行 TCP 80/443。脚本默认启动 Caddy 自动配置 HTTPS；如果已有 Nginx、宝塔或其他 HTTPS 入口，使用 `--no-proxy`，将已有入口转发到 `127.0.0.1:3000`。
+
+开发机先提交并推送发布代码，再推送版本标签（下面以 `v0.1.0` 为例）：
+
+```bash
+git push origin main
+git tag -a v0.1.0 -m "Cardfolio v0.1.0"
+git push origin v0.1.0
+```
+
+GitHub Actions 全部通过后，在已安装 Docker Engine 24+、Compose v2.20+、Git 和 OpenSSL 的 Linux 服务器执行：
+
+```bash
+git clone --branch v0.1.0 --depth 1 https://github.com/HightBigger/CardCalendar.git
+cd CardCalendar
+bash scripts/deploy.sh cards.example.com
+```
+
+将 `cards.example.com` 替换为实际域名。脚本会自动生成权限为 `600` 的 `.env.production` 和随机数据库密码，按当前提交生成 Web/worker 镜像标签，构建镜像、启动数据库、停止应用写入、备份数据库、执行迁移，再等待 Web、数据库和 worker 心跳就绪。Caddy 启动后自动申请证书，可用 `curl --fail https://cards.example.com/api/readyz` 验证公开入口。
+
+默认启用待办、私人活动和银行活动浏览；周期执行、目录管理和目录加入仍分别由 `FEATURE_ACTIVITY_PERIODS`、`FEATURE_CATALOG_MANAGE`、`FEATURE_CATALOG_JOIN` 控制，默认关闭。全部开关会传入 Web、worker 和迁移容器。启用目录管理后还需通过 `scripts/catalog-role.ts` 为具体用户授予管理角色。
+
+已有 HTTPS 入口时运行：
+
+```bash
+bash scripts/deploy.sh cards.example.com --no-proxy
+```
+
+重复执行会保留 `.env.production` 和数据库卷，迁移前将数据库备份到 `.deploy-backups/`，已有镜像按提交保留。构建失败不会停止现有应用；备份或迁移失败会停止发布，应用保持停止以便排查。脚本管理 Compose 内置的 PostgreSQL；使用外部托管数据库时按下方手动流程部署。
+
+后续更新到新的、已通过 CI 的 tag 后再次运行脚本：
+
+```bash
+git fetch --tags
+git checkout --detach v0.1.1
+bash scripts/deploy.sh cards.example.com
+```
+
+排查日志（使用 `--no-proxy` 时去掉第二个 `-f` 和 `caddy`）：
+
+```bash
+APP_DOMAIN=cards.example.com docker compose --env-file .env.production -f docker-compose.production.yml -f docker-compose.https.yml logs --tail=100 web worker caddy
+```
 
 ## 架构与强制配置
 
@@ -15,7 +61,7 @@ AUTH_DEV_HEADER=false
 
 ## 首次部署
 
-需要 Docker Engine 24+ 和 Docker Compose v2。先在部署主机准备未跟踪的环境文件：
+需要 Docker Engine 24+ 和 Docker Compose v2.20+。先在部署主机准备未跟踪的环境文件：
 
 ```bash
 cp .env.production.example .env.production
@@ -38,7 +84,9 @@ docker compose --env-file .env.production -f docker-compose.production.yml up -d
 
 对于外部托管的 PostgreSQL，不启动 Compose 中的 `postgres`，将 `DATABASE_URL` 改为托管库的 TLS 连接串，并使用 `docker compose ... run --rm --no-deps migrate` 防止 Compose 自动启动本地数据库，再在同一受控网络内运行 Web 和 worker。
 
-样例中的 PostgreSQL tag 用于快速启动。正式发布应将 `POSTGRES_IMAGE`、`WEB_IMAGE` 和 `WORKER_IMAGE` 全部设为经 CI 验证的不可变 digest，避免同一 tag 在不同时间解析为不同镜像。
+样例中的 PostgreSQL tag 用于快速启动。一键脚本按提交 SHA 标记本地构建的应用镜像，保留上一版以便回滚；使用镜像仓库发布时，将 `POSTGRES_IMAGE`、`WEB_IMAGE` 和 `WORKER_IMAGE` 固定为已验证的 digest，避免可变 tag 指向其他镜像。
+
+一键脚本在服务器从代码构建，以提交 SHA 标记应用镜像。当前 CI 只验证和构建镜像，不上传镜像仓库，也不连接服务器自动部署；推送 tag 后仍需在服务器运行脚本。
 
 ## 发布、验证与回滚
 

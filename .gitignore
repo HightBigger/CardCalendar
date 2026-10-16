@@ -13,6 +13,7 @@ playwright-report/
 drizzle/
 *.log
 *.tsbuildinfo
+.deploy-backups/
 
 # macOS metadata on external volumes
 ._*
