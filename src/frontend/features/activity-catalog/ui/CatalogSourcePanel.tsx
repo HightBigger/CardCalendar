@@ -1,4 +1,5 @@
 "use client";
+import { useEffect } from "react";
 import type { ActivityDetail } from "../../../../contracts/activities";
 import { QueryState } from "../../../shared/ui";
 import { RulesView } from "../../activity-rules";
@@ -6,9 +7,11 @@ import { useCatalogSourceController } from "../application/useCatalogSourceContr
 export function CatalogSourcePanel({
   detail,
   scope,
+  onNotice,
 }: {
   detail: ActivityDetail;
   scope: string;
+  onNotice?: (needsAttention: boolean) => void;
 }) {
   const {
     query,
@@ -31,6 +34,8 @@ export function CatalogSourcePanel({
     send,
     today,
   } = useCatalogSourceController(detail, scope);
+  const needsAttention = !!data && (!!data.source.bankCancellation || data.source.publicationStatus === "withdrawn" || (!!data.source.latestReleaseId && data.source.latestReleaseId !== data.source.boundReleaseId));
+  useEffect(() => { if (data) onNotice?.(needsAttention); }, [!!data, needsAttention, onNotice]);
   return (
     <section className="section-block catalog-page">
       <QueryState

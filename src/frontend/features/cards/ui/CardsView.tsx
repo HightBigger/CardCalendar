@@ -1,8 +1,8 @@
 "use client";
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import type { ApiUser, ApiCard, CardSummary, ApiCycle, ApiFeeEvent, ApiFeeEventHistory, ApiReminder, ApiReminderRule, ProgressEntry, ProgressData, CardDetail, CardDraft } from "../../../../contracts/mvp";
-import { STATUS_LABEL, fmtDate, daysUntil, reminderOverdue, money, ruleText, cardLabel } from "../../../shared/display/legacy";
-import { Icon, ModalShell } from "../../../shared/ui";
+import { useMemo, useState } from "react";
+import type { CardSummary } from "../../../../contracts/mvp";
+import { STATUS_LABEL, fmtDate, money } from "../../../shared/display/legacy";
+import { Icon } from "../../../shared/ui";
 export function CardsView(props: {
   cards: CardSummary[];
   query: string;
@@ -17,8 +17,17 @@ export function CardsView(props: {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [sortBy, setSortBy] = useState("due_date");
+  const filterCount = [statusFilter !== "all", feeStatusFilter !== "all", qualifiedFilter !== "all", !!dateFrom, !!dateTo].filter(Boolean).length;
+  const hasFilters = !!props.query.trim() || filterCount > 0;
+  function resetFilters() {
+    props.onQueryChange("");
+    setStatusFilter("all"); setFeeStatusFilter("all"); setQualifiedFilter("all");
+    setDateFrom(""); setDateTo("");
+  }
   const visibleCards = useMemo(() => {
+    const query = props.query.trim().toLowerCase();
     const filtered = props.cards.filter((card) =>
+      (!query || `${card.issuerName} ${card.name} ${card.last4}`.toLowerCase().includes(query)) &&
       (statusFilter === "all" || card.status === statusFilter) &&
       (feeStatusFilter === "all" || card.nextEvent?.status === feeStatusFilter) &&
       (qualifiedFilter === "all" || (card.progress?.qualified === (qualifiedFilter === "qualified"))) &&
@@ -33,12 +42,11 @@ export function CardsView(props: {
       if (sortBy === "created_at") return b.createdAt.localeCompare(a.createdAt);
       return a.nextFeeDate.localeCompare(b.nextFeeDate);
     });
-  }, [props.cards, statusFilter, feeStatusFilter, qualifiedFilter, dateFrom, dateTo, sortBy]);
+  }, [props.cards, props.query, statusFilter, feeStatusFilter, qualifiedFilter, dateFrom, dateTo, sortBy]);
   return (
     <>
       <div className="welcome-row">
         <div>
-          <p className="eyebrow">我的卡片</p>
           <h1>我的卡片</h1>
           <p className="subline">维护每张卡的年费规则与免年费目标。</p>
         </div>
@@ -48,11 +56,15 @@ export function CardsView(props: {
         </button>
       </div>
       <section className="section-block">
-        <div className="toolbar">
+        {(props.cards.length > 0 || hasFilters) && <div className="toolbar cards-toolbar">
           <label className="search-field">
             <Icon name="search" size={16} />
-            <input value={props.query} onChange={(event) => props.onQueryChange(event.target.value)} placeholder="搜索银行、卡名或尾号" />
+            <input type="search" aria-label="搜索卡片" value={props.query} onChange={(event) => props.onQueryChange(event.target.value)} placeholder="搜索银行、卡名或尾号" />
           </label>
+          <details className="card-list-filters">
+            <summary>筛选与排序{filterCount > 0 && <span>已选 {filterCount} 项</span>}<Icon name="chevronDown" size={15} /></summary>
+            <div className="card-filter-fields">
+          <label>卡片状态
           <select
             className="filter-button"
             value={statusFilter}
@@ -64,6 +76,8 @@ export function CardsView(props: {
             <option value="suspended">已停用</option>
             <option value="archived">已归档</option>
           </select>
+          </label>
+          <label>年费状态
           <select
             className="filter-button"
             value={feeStatusFilter}
@@ -77,6 +91,8 @@ export function CardsView(props: {
             <option value="refunded">已退费</option>
             <option value="not_applicable">无需处理</option>
           </select>
+          </label>
+          <label>免年费进度
           <select
             className="filter-button"
             value={qualifiedFilter}
@@ -87,8 +103,10 @@ export function CardsView(props: {
             <option value="qualified">已达标</option>
             <option value="not_qualified">未达标</option>
           </select>
-          <input className="filter-button date-filter" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} aria-label="年费起始日期" />
-          <input className="filter-button date-filter" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} aria-label="年费结束日期" />
+          </label>
+          <label>年费起始日期<input className="filter-button date-filter" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
+          <label>年费结束日期<input className="filter-button date-filter" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
+          <label>排序
           <select
             className="filter-button"
             value={sortBy}
@@ -102,7 +120,12 @@ export function CardsView(props: {
             <option value="name">按卡片名称</option>
             <option value="created_at">按创建时间</option>
           </select>
-        </div>
+          </label>
+            </div>
+          </details>
+        </div>}
+        {dateFrom && dateTo && dateFrom > dateTo && <p className="form-error" role="alert">年费结束日期不能早于起始日期。</p>}
+        {hasFilters && <div className="cards-filter-result"><span role="status">找到 {visibleCards.length} 张卡片</span><button className="text-button" onClick={resetFilters}>清除筛选</button></div>}
         {visibleCards.length ? (
           <div className="card-list">
             {visibleCards.map((card, index) => (
@@ -122,6 +145,8 @@ export function CardsView(props: {
               </div>
             ))}
           </div>
+        ) : props.cards.length > 0 || hasFilters ? (
+          <div className="empty-state cards-no-results"><Icon name="search" size={26} /><strong>没有符合条件的卡片</strong><p>试试其他关键词，或清除筛选查看全部卡片。</p></div>
         ) : (
           <CardsEmptyState onAdd={props.onAdd} />
         )}

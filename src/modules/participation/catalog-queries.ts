@@ -442,6 +442,13 @@ export class CatalogPrivateQueries {
           },
         ],
       })),
+      requirements: {
+        enrollmentRequired: content.conditions.enrollmentRequired,
+        enrollmentScope: content.conditions.enrollmentScope,
+        enrollmentDeadline: content.conditions.enrollmentDeadline,
+        // Manual rules have an explicit flag; their placeholder quota text is not a requirement.
+        quotaRequired: p.source_kind === "manual" ? p.editor_draft?.quotaRequired === true : !!content.conditions.quotaText.trim(),
+      },
       checks: [
         ...periods.filter(()=>content.conditions.enrollmentScope==='period').map(period=>({scope:'period' as const,periodId:period.id,label:period.period_key,eligibility:(period as any).eligibility??'unknown',enrollment:(period as any).enrollment??'unknown',quota:(period as any).quota??'unknown',allowedCommands:[{kind:'record_eligibility',enabled:true},{kind:'record_enrollment',enabled:true},{kind:'record_quota',enabled:true}]})),
         {

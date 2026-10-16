@@ -119,8 +119,8 @@ test("periods require both targets and human confirmation while other periods re
   await page.goto("/dev/workbench?screen=activities&participation=fixture-participation");
   const period = page.locator(".period-card").filter({ hasText: "10 月" });
   await expect(period).toContainText("剩余：2 笔 · 800 元");
-  await period.getByRole("button", { name: "更新进度／核对达标", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "更新进度／核对达标", exact: true });
+  await period.getByRole("button", { name: "更新进度", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "更新进度", exact: true });
   await dialog.getByLabel("累计观察日期", { exact: true }).fill("2026-10-10");
   await dialog.getByRole("combobox", { name: "消费阶段", exact: true }).selectOption("posted");
   await dialog.getByLabel("累计笔数", { exact: true }).fill("5"); await dialog.getByLabel("累计金额（CNY）", { exact: true }).fill("1000.00");
@@ -165,6 +165,7 @@ test("queued and failed bulk plans preserve effective periods and retry after fa
   const duplicateKeys: string[] = [];
   page.on("console", (message) => { if (/same key|unique.*key/i.test(message.text())) duplicateKeys.push(message.text()); });
   await page.goto("/dev/workbench?scenario=queued-fail&screen=activities&participation=fixture-participation");
+  await page.locator(".activity-settings > summary").click();
   const plan = page.getByRole("region", { name: "有限周期计划", exact: true });
   const preferences = page.getByRole("region", { name: "日历与待办节点偏好", exact: true });
   const expectSinglePlan = async (withJob: boolean) => {
@@ -208,6 +209,7 @@ test("queued and failed bulk plans preserve effective periods and retry after fa
   await expectDrafts();
   // A synchronous save refreshes activity versions without remounting either draft.
   await page.goto("/dev/workbench?screen=activities&participation=fixture-participation");
+  await page.locator(".activity-settings > summary").click();
   await expectSinglePlan(false);
   await target.fill("7");
   await noticeDays.fill("3,1");
@@ -225,6 +227,10 @@ test("queued and failed bulk plans preserve effective periods and retry after fa
 test("real routes remain gated and a failing fee query does not block cards or session", async ({ page }) => {
   const todo = await page.goto("/todos"); expect(todo?.status()).toBe(404);
   const activity = await page.goto("/activities"); expect(activity?.status()).toBe(404);
+  for (const path of ["/activities/unopened", "/bank-activities", "/bank-activities/unopened", "/admin/bank-activities", "/admin/bank-activities/new", "/admin/bank-activities/unopened"]) {
+    const response = await page.request.get(path, { headers: { "x-cardcalendar-pathname": "/" } });
+    expect(response.status(), path).toBe(404);
+  }
   await mockMvpAccount(page, { feeError: "年费局部故障" });
   await page.goto("/"); await expect(page.getByRole("heading", { name: "账户 A，你好", exact: true })).toBeVisible();
   await expect(page.getByRole("alert").filter({ hasText: "年费局部故障" })).toBeVisible();
@@ -304,7 +310,10 @@ test("failed annual fee progress saves retain their input and succeed on explici
 test("overview and card summary reuse todo and reward forms without mixing card progress", async ({ page }) => {
   await page.goto("/dev/workbench?screen=overview&month=2026-10");
   const attention = page.getByRole("region", { name: "近期待办", exact: true });
-  await expect(attention.locator(".todo-row")).toHaveCount(4);
+  await expect(attention.locator(".todo-preview")).toHaveCount(4);
+  await expect(page.getByRole("heading", { level: 2 })).toHaveText(["近期待办", "我的卡片"]);
+  await expect(page.locator(".fixture-banner")).not.toHaveAttribute("open");
+  await expect(attention.getByText("更多操作", { exact: true })).toHaveCount(0);
   await attention.getByRole("button", { name: "整理活动来源", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "整理活动来源", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
@@ -318,6 +327,7 @@ test("overview and card summary reuse todo and reward forms without mixing card 
 
 test("cancelled activity tracking retains rewards and records the chosen reminder policy", async ({ page }) => {
   await page.goto("/dev/workbench?screen=activities&participation=fixture-participation");
+  await page.locator(".activity-settings > summary").click();
   await page.getByRole("button", { name: "取消活动跟踪", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "取消活动跟踪", exact: true });
   await expect(dialog.getByRole("button", { name: "确认取消活动跟踪", exact: true })).toBeDisabled();
@@ -326,7 +336,8 @@ test("cancelled activity tracking retains rewards and records the chosen reminde
   await dialog.getByRole("button", { name: "确认取消活动跟踪", exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(page.locator(".period-card").first()).toContainText("已取消");
-  await expect(page.locator(".period-card").first().getByRole("button", { name: "更新进度／核对达标", exact: true })).toBeDisabled();
+  await expect(page.locator(".period-card").first().getByRole("button", { name: "更新进度", exact: true })).toBeDisabled();
+  await page.locator(".activity-history > summary").click();
   await expect(page.getByText("继续奖励提醒 · 用户决定停止消费跟踪", { exact: false })).toBeVisible();
   await expect(page.locator(".reward-card")).toHaveCount(2);
   await page.locator(".reward-card").filter({ hasText: "三期最终返现" }).getByRole("button", { name: "查看奖励／处理记录", exact: true }).click();
@@ -345,4 +356,79 @@ test("archiving a card requires an explicit reward reminder choice in the new fr
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.locator('.todo-row[data-action-id="fixture-fee-action"]').getByRole("button", { name: "处理年费", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "验收白金卡", exact: true }).getByRole("button", { name: "恢复使用", exact: true })).toBeVisible();
+});
+
+
+test("activity detail prioritizes progress and keeps participation drafts on a failed save", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto("/dev/workbench?scenario=retry&screen=activities&participation=fixture-participation");
+  await expect(page.getByRole("heading", { name: "本期进度", exact: true })).toBeVisible();
+  await expect(page.locator(".period-card:visible")).toHaveCount(1);
+  await expect(page.locator(".activity-settings")).not.toHaveAttribute("open");
+  await expect(page.getByRole("combobox")).toHaveCount(0);
+  await expect(page.getByText("资格、报名与名额核对", { exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+  await page.getByRole("button", { name: "确认参与信息", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "参与信息", exact: true });
+  await expect(dialog.getByRole("combobox")).toHaveCount(1);
+  await expect(dialog.getByRole("button", { name: /活动名额/ })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "保存参与资格结果", exact: true })).toBeDisabled();
+  await dialog.getByLabel("参与资格结果", { exact: true }).selectOption("confirmed");
+  await dialog.getByLabel("银行反馈或备注", { exact: true }).fill("银行客服已确认可参加");
+  await dialog.getByRole("button", { name: "保存参与资格结果", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("模拟网络中断");
+  await expect(dialog.getByLabel("银行反馈或备注", { exact: true })).toHaveValue("银行客服已确认可参加");
+  await expect(dialog.getByLabel("参与资格结果", { exact: true })).toHaveValue("confirmed");
+  await dialog.getByRole("button", { name: "保存参与资格结果", exact: true }).click();
+  await expect(dialog.getByRole("status")).toContainText("已保存参与资格结果");
+  await dialog.getByRole("button", { name: /活动报名/ }).click();
+  await dialog.getByLabel("活动报名结果", { exact: true }).selectOption("confirmed");
+  await dialog.getByLabel("银行反馈或备注", { exact: true }).fill("银行 App 显示报名成功");
+  await dialog.getByRole("button", { name: "保存活动报名结果", exact: true }).click();
+  await expect(dialog.getByRole("status")).toContainText("已保存活动报名结果");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("button", { name: "查看参与信息", exact: true })).toBeFocused();
+  await expect(page.locator(".reward-card").filter({ hasText: "三期最终返现" })).toContainText("已确认 0/3 期");
+  await page.locator(".activity-history > summary").click();
+  await expect(page.locator(".activity-history")).toContainText("银行客服已确认可参加");
+  await expect(page.locator(".activity-history")).toContainText("银行 App 显示报名成功");
+});
+
+test("per-period enrollment fixes the scope and never confirms a different month", async ({ page }) => {
+  await page.goto("/dev/workbench?scenario=period-enrollment&screen=activities&participation=fixture-participation");
+  const october = page.locator(".period-card").filter({ hasText: "10 月" });
+  await october.getByRole("button", { name: "确认参与信息", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "10 月 · 参与信息", exact: true });
+  await expect(dialog.getByLabel("选择报名周期", { exact: true })).toHaveCount(0);
+  await dialog.getByRole("button", { name: /活动报名/ }).click();
+  await dialog.getByLabel("活动报名结果", { exact: true }).selectOption("confirmed");
+  await dialog.getByLabel("银行反馈或备注", { exact: true }).fill("银行已确认十月报名");
+  await dialog.getByRole("button", { name: "保存活动报名结果", exact: true }).click();
+  await expect(dialog.getByRole("status")).toContainText("已保存活动报名结果");
+  await page.keyboard.press("Escape");
+  await page.locator(".other-periods > summary").click();
+  const november = page.locator(".period-card").filter({ hasText: "11 月" });
+  await november.getByRole("button", { name: "确认参与信息", exact: true }).click();
+  const next = page.getByRole("dialog", { name: "11 月 · 参与信息", exact: true });
+  await next.getByRole("button", { name: /活动报名/ }).click();
+  await expect(next.getByLabel("活动报名结果", { exact: true })).toHaveValue("unknown");
+  await page.keyboard.press("Escape");
+  await october.getByRole("button", { name: "确认参与信息", exact: true }).click();
+  await dialog.getByRole("button", { name: /活动报名/ }).click();
+  await expect(dialog.getByLabel("活动报名结果", { exact: true })).toHaveValue("confirmed");
+});
+
+test("participation only asks for enrollment and quota when the activity requires them", async ({ page }) => {
+  await page.goto("/dev/workbench?scenario=no-enrollment&screen=activities&participation=fixture-participation");
+  await page.getByRole("button", { name: "确认参与信息", exact: true }).click();
+  let dialog = page.getByRole("dialog", { name: "参与信息", exact: true });
+  await expect(dialog.getByRole("button", { name: /活动报名|活动名额/ })).toHaveCount(0);
+  await expect(dialog.getByLabel("参与资格结果", { exact: true })).toBeVisible();
+  await page.goto("/dev/workbench?scenario=quota-required&screen=activities&participation=fixture-participation");
+  await page.getByRole("button", { name: "确认参与信息", exact: true }).click();
+  dialog = page.getByRole("dialog", { name: "参与信息", exact: true });
+  await dialog.getByRole("button", { name: /活动名额/ }).click();
+  await expect(dialog.getByLabel("活动名额结果", { exact: true })).toBeVisible();
 });

@@ -38,6 +38,14 @@ async function main() {
         await page.screenshot({ path: join(output, name + "-" + size + ".png"), fullPage: false, animations: "disabled" });
       };
 
+      await page.goto(baseURL + "/login");
+      await expect(page.getByRole("button", { name: "登录", exact: true })).toBeEnabled();
+      await capture("login");
+      await page.getByRole("link", { name: "创建账号", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "创建账号", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "创建账号并进入", exact: true })).toBeEnabled();
+      await capture("register");
+
       await goto("month=2026-10");
       await expect(page.locator(".todo-row")).toHaveCount(8);
       await capture("todos-list");
@@ -64,14 +72,15 @@ async function main() {
 
       await goto("screen=activities&participation=fixture-participation");
       const plan = page.getByRole("region", { name: "有限周期计划", exact: true });
-      await expect(plan).toHaveCount(1);
+      await expect(page.locator('[aria-label="有限周期计划"]')).toHaveCount(1);
       await expect(page.locator(".period-card")).toHaveCount(3);
       await capture("activity-detail");
+      await page.locator(".activity-settings > summary").click();
       await plan.scrollIntoViewIfNeeded();
       await capture("period-plan");
       const period = page.locator(".period-card").filter({ hasText: "10 月" });
-      await period.getByRole("button", { name: "更新进度／核对达标", exact: true }).click();
-      const task = page.getByRole("dialog", { name: "更新进度／核对达标", exact: true });
+      await period.getByRole("button", { name: "更新进度", exact: true }).click();
+      const task = page.getByRole("dialog", { name: "更新进度", exact: true });
       await expect(task.locator(".progress-facts")).toBeVisible();
       await capture("period-progress");
       await task.getByRole("button", { name: "记录达标核对", exact: true }).scrollIntoViewIfNeeded();
@@ -87,7 +96,7 @@ async function main() {
 
       await goto("screen=overview&month=2026-10");
       const attention = page.getByRole("region", { name: "近期待办", exact: true });
-      await expect(attention.locator(".todo-row")).toHaveCount(4);
+      await expect(attention.locator(".todo-preview")).toHaveCount(4);
       await capture("overview");
       await attention.locator('[data-action-id="fixture-fee-action"]').getByRole("button", { name: "处理年费", exact: true }).click();
       const summary = page.getByRole("region", { name: "卡片活动摘要", exact: true });
@@ -96,6 +105,7 @@ async function main() {
       await capture("card-summary");
 
       await goto("scenario=queued-fail&screen=activities&participation=fixture-participation");
+      await page.locator(".activity-settings > summary").click();
       await expect(plan).toHaveCount(1);
       await plan.getByLabel("计划目标笔数", { exact: true }).fill("7");
       await plan.getByRole("button", { name: "保存并生成周期", exact: true }).click();

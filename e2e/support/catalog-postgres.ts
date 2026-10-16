@@ -168,6 +168,14 @@ export const test = base.extend<
           load: () => import("../../app/api/v1/me/capabilities/route"),
         },
         {
+          pattern: /^\/api\/v1\/reminders$/,
+          load: () => import("../../app/api/v1/reminders/route"),
+        },
+        {
+          pattern: /^\/api\/v1\/reminders\/rules$/,
+          load: () => import("../../app/api/v1/reminders/rules/route"),
+        },
+        {
           pattern: /^\/api\/v1\/banks$/,
           load: () => import("../../app/api/v1/banks/route"),
         },

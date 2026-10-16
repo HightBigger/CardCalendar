@@ -6,12 +6,14 @@ test("MVP main flow on mobile viewport", async ({ page }) => {
   const nextFee = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
 
   await page.goto("/login");
-  await expect(page.getByRole("tab", { name: "登录" })).toHaveAttribute("aria-selected", "true");
-  await page.getByRole("tab", { name: "注册" }).click();
+  await expect(page.getByRole("button", { name: "登录", exact: true })).toBeVisible();
+  await expect(page.getByRole("tab")).toHaveCount(0);
+  await page.getByRole("link", { name: "创建账号", exact: true }).click();
+  await expect(page).toHaveURL(/\/register$/);
   await page.locator('label:has-text("称呼") input').fill("E2E 用户");
   await page.locator('label:has-text("邮箱") input').fill(email);
   await page.locator('label:has-text("密码") input').fill("password123");
-  await page.getByRole("button", { name: "注册并进入" }).click();
+  await page.getByRole("button", { name: "创建账号并进入" }).click();
   await page.waitForURL("/");
   await expect(page.locator("h1").first()).toContainText("你好", { timeout: 20_000 });
 
@@ -39,7 +41,7 @@ test("MVP main flow on mobile viewport", async ({ page }) => {
   await page.locator('label:has-text("卡号后四位") input').fill("1234");
   await page.locator('label:has-text("年费金额") input').fill("1800");
   await page.locator('label:has-text("下次年费日期") input').fill(nextFee);
-  await page.locator('label:has-text("免年费规则") select').selectOption("count");
+  await page.getByRole("combobox", { name: "免年费规则", exact: true }).selectOption("count");
   await page.locator('label:has-text("目标次数") input').fill("12");
   await page.getByRole("button", { name: "保存卡片" }).click();
 
@@ -91,11 +93,12 @@ test("V1.1 card fields, cumulative progress and reminder timeline", async ({ pag
   const nextFee = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
 
   await page.goto("/login");
-  await page.getByRole("tab", { name: "注册" }).click();
+  await page.getByRole("link", { name: "创建账号", exact: true }).click();
+  await expect(page).toHaveURL(/\/register$/);
   await page.locator('label:has-text("称呼") input').fill("V1.1 用户");
   await page.locator('label:has-text("邮箱") input').fill(email);
   await page.locator('label:has-text("密码") input').fill("password123");
-  await page.getByRole("button", { name: "注册并进入" }).click();
+  await page.getByRole("button", { name: "创建账号并进入" }).click();
   await page.waitForURL("/");
 
   await page.getByRole("button", { name: "我的卡片" }).click();
@@ -104,12 +107,15 @@ test("V1.1 card fields, cumulative progress and reminder timeline", async ({ pag
   await page.locator('label:has-text("卡片名称") input').fill("V1.1白金卡");
   await page.locator('label:has-text("卡号后四位") input').fill("5678");
   await page.locator('label:has-text("年费金额") input').fill("1800");
-  await page.locator('label:has-text("币种") input').fill("USD");
+  const cardForm = page.getByRole("dialog", { name: "新增卡片", exact: true });
+  await cardForm.getByText("更多设置", { exact: true }).click();
+  await cardForm.getByRole("combobox", { name: "币种", exact: true }).selectOption("USD");
   await page.locator('label:has-text("进度周期开始") input').fill("2026-01-01");
   await page.locator('label:has-text("进度周期结束") input').fill("2026-12-31");
   await page.locator('label:has-text("备注") textarea').fill("V1.1 备注");
+  await cardForm.getByText("更多设置", { exact: true }).click();
   await page.locator('label:has-text("下次年费日期") input').fill(nextFee);
-  await page.locator('label:has-text("免年费规则") select').selectOption("count");
+  await page.getByRole("combobox", { name: "免年费规则", exact: true }).selectOption("count");
   await page.locator('label:has-text("目标次数") input').fill("10");
   await page.getByRole("button", { name: "保存卡片" }).click();
 

@@ -324,10 +324,8 @@ test("real personal detail adopts future rule without changing current target; t
   await page.getByText("周期及刷卡目标 · 未来周期", { exact: true }).click();
   await expect(
     page
-      .locator("details")
-      .filter({
-        has: page.getByText("周期及刷卡目标 · 未来周期", { exact: true }),
-      })
+      .getByText("周期及刷卡目标 · 未来周期", { exact: true })
+      .locator("..")
       .locator("pre")
       .first(),
   ).toContainText("5");

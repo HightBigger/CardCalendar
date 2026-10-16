@@ -15,7 +15,9 @@ export function middleware(request: NextRequest): NextResponse {
       response = NextResponse.next();
     }
   } else {
-    response = NextResponse.next();
+    const headers = new Headers(request.headers);
+    headers.set("x-cardcalendar-pathname", request.nextUrl.pathname);
+    response = NextResponse.next({ request: { headers } });
   }
 
   applySecurityHeaders(response.headers, process.env.NODE_ENV === "production");

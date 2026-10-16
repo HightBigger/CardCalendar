@@ -1,5 +1,29 @@
 # 第 21、22 节前端实施与 review 交付
 
+## 2026-10-16 接续实施状态
+
+本次接续完成个人工具界面的简化：登录与注册分离，首页聚焦近期待办和卡片，卡片高级设置与列表筛选按需展开，活动详情优先显示本期目标和奖励。新增活动保留精简的基本字段，报名、消费目标、币种和来源收进“更多规则”。仅有一张卡时自动选中；修改名称不会丢失折叠的规则值，折叠区校验失败时展开提示。目录规则更新、下架或银行取消消息自动展开来源区域，便于核对。
+
+活动菜单切换已复现并修复：客户端路由仍会卸载各页自带的会话与侧栏，造成全屏“正在加载账户”。正式工作区路由迁入 `(workspace)` 分组，共用 `WorkspaceFrame` 中的会话、权限、通知和导航；页面只挂载业务内容。未开放功能在服务端布局提前拦截，保留 HTTP 404。实际登录页面的双向切换已检查，浏览器无错误。
+
+[活动导航专项](../e2e/activity-navigation.spec.ts) 在旧实现上可稳定检出侧栏卸载，修复后 360px、1440px 两项通过：检查侧栏与顶栏 DOM 保持连接、账户与权限不重查、无文档导航，并覆盖重复点击、前进后退、慢请求及目录报错后继续导航。运行前开启本地 `FEATURE_TODOS`、`FEATURE_ACTIVITIES`、`FEATURE_CATALOG_READ`，执行 `E2E_ACTIVITY_NAVIGATION=true npm run test:e2e -- e2e/activity-navigation.spec.ts --workers=1`。原有浏览器回归 31 项通过，功能关闭入口回归修复后单独复测通过；隔离生产构建与类型检查通过。
+
+当前代码已提供私人活动创建／加入、规则修订、周期计划、节点偏好、任务查询与自定义待办写入等端点。下方 2026-10-10 表格中的“接口待实现”是当时的交付边界，不能作为当前接口清单；配套后端 review 见 [CC21-22-BACKEND-REVIEW-2026-10-13.md](./CC21-22-BACKEND-REVIEW-2026-10-13.md)。
+
+本次新增 360px、1280px 两条真实浏览器联调，经过 Next HTTP 路由、middleware、cookie 会话和本地 PostgreSQL：创建私人活动、刷新读取、修改报名／目标／币种、折叠后只改名称、再次刷新并读取数据库投影均已通过。此证据只覆盖所列流程，不表示第 21、22 节全部验收门槛已完成。环境文件与生产开关未改，Web 和 worker 使用本地进程参数运行。
+
+| 本次验证 | 结果与范围 |
+| --- | --- |
+| 单元／数据库测试 | 25 个文件、123 项通过。 |
+| 完整浏览器回归 | 32 项通过；包含年费、卡片入口、归档、目录与工作区。2 项私人活动用例在此隔离环境跳过，单独在真实服务运行通过。MVP 使用独立 memory handler，目录／归档使用真实 handler 和临时 PostgreSQL，均不能冒充 Next middleware 验证。 |
+| 私人活动真实 HTTP | 2/2 通过，分别为 360px 与 1280px；使用独立测试账户和本地 PostgreSQL。 |
+| 页面检查 | 登录、注册和工作区共 40 个桌面／手机状态，无横向溢出、console error 或 page error；另检查真实卡片与活动表单截图。 |
+| 构建与类型 | 隔离输出目录的生产构建通过；最终类型检查通过。自动生成的 TypeScript 配置已恢复。 |
+
+真实私人活动联调由 [e2e/private-activity.spec.ts](../e2e/private-activity.spec.ts) 提供，默认跳过。先运行本地 PostgreSQL Web 服务（`USE_DATABASE=true`、`AUTH_DEV_HEADER=false`、`FEATURE_ACTIVITIES=true`），再执行 `E2E_REAL_PRIVATE_WORKBENCH=true npm run test:e2e -- e2e/private-activity.spec.ts --workers=1`。用例只允许本机地址，重跑复用专用测试账户，避免每次注册新账户。截图检查由 [scripts/frontend-visual-qa.cjs](../scripts/frontend-visual-qa.cjs) 提供。
+
+## 2026-10-10 交付记录（历史）
+
 日期：2026-10-10。范围：年费 MVP 拆分、私人活动／周期／奖励前端、待办列表／日历，以及架构师 review 第 6 项与第 3 项的前端联调。第 23 节目录及配套后端由切图仔2负责，其实现与验证见 [CC-23-DELIVERY.md](./CC-23-DELIVERY.md)。
 
 新增业务前端已实现，开发夹具验收与真实归档联调通过。生产新增入口仍受开关控制；尚缺的私人业务接口列于下文，不能据夹具结果开放全部功能。本轮没有修改 `.env`、生产 gate，也没有提交、推送或部署。

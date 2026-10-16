@@ -1,5 +1,6 @@
 @import "../src/frontend/shared/styles/tokens.css";
 @import "../src/frontend/shared/styles/workbench.css";
+@import "../src/frontend/shared/styles/essentials.css";
 @import "../src/frontend/features/todos/styles/todos.css";
 @import "../src/frontend/features/activities/styles/activities.css";
 
@@ -1241,8 +1242,8 @@ body {
 .form-grid input:focus,
 .form-grid select:focus,
 .danger-zone input:focus {
-  outline: 2px solid rgba(37, 99, 235, 0.22);
-  border-color: #2563eb;
+  outline: 2px solid var(--focus-ring);
+  border-color: var(--accent-strong);
 }
 
 .form-error {
@@ -3183,35 +3184,34 @@ select.filter-button {
   }
 }
 
-/* Cardfolio command-center visual direction. The data surface stays solid;
-   translucent material is reserved for structural chrome. */
+/* Warm monochrome: charcoal actions, white surfaces and warm gray structure. */
 :root {
-  color-scheme: dark;
-  --canvas: #0b1118;
-  --canvas-raised: #0e1721;
-  --surface-solid: #111b25;
-  --surface-raised: #172330;
-  --surface-hover: #1b2b39;
-  --chrome: rgba(12, 20, 29, 0.82);
-  --line: rgba(150, 180, 202, 0.16);
-  --line-strong: rgba(170, 202, 220, 0.3);
-  --text: #edf5f8;
-  --text-secondary: #a9bac5;
-  --text-tertiary: #718694;
-  --accent: #54d6e8;
-  --accent-strong: #1da8c0;
-  --accent-soft: rgba(84, 214, 232, 0.12);
-  --success: #55d39a;
-  --success-soft: rgba(85, 211, 154, 0.12);
-  --warning: #f2bd68;
-  --warning-soft: rgba(242, 189, 104, 0.12);
-  --danger: #ff817c;
-  --danger-soft: rgba(255, 129, 124, 0.12);
-  --info: #91b9ff;
-  --info-soft: rgba(145, 185, 255, 0.12);
-  --focus-ring: rgba(84, 214, 232, 0.72);
-  --shadow-control: 0 10px 30px rgba(0, 0, 0, 0.16);
-  --shadow-overlay: 0 24px 70px rgba(0, 0, 0, 0.46);
+  color-scheme: light;
+  --canvas: #f7f6f3;
+  --canvas-raised: #f0eeea;
+  --surface-solid: #ffffff;
+  --surface-raised: #f2f0ec;
+  --surface-hover: #eae7e1;
+  --chrome: #f1efeb;
+  --line: #e6e2dc;
+  --line-strong: #d0cac1;
+  --text: #292724;
+  --text-secondary: #716c65;
+  --text-tertiary: #797269;
+  --accent: #2c2a27;
+  --accent-strong: #151412;
+  --accent-soft: #eae6e0;
+  --success: #57534e;
+  --success-soft: #f0eeea;
+  --warning: #95621e;
+  --warning-soft: #faf2e4;
+  --danger: #b74f45;
+  --danger-soft: #fcf0ee;
+  --info: #615c56;
+  --info-soft: #f0eeea;
+  --focus-ring: rgba(70, 65, 58, 0.55);
+  --shadow-control: 0 1px 2px rgba(42, 37, 30, 0.04);
+  --shadow-overlay: 0 16px 48px rgba(42, 37, 30, 0.12);
 
   /* Existing component tokens stay mapped so behavior and markup do not change. */
   --ink: var(--text);
@@ -3219,15 +3219,33 @@ select.filter-button {
   --line-legacy: var(--line);
   --soft: var(--surface-raised);
   --paper: var(--canvas);
-  --green: var(--success);
+  --green: var(--accent);
   --green-dark: var(--text);
-  --green-soft: var(--success-soft);
+  --green-soft: var(--accent-soft);
   --amber: var(--warning);
   --amber-soft: var(--warning-soft);
   --coral: var(--danger);
   --coral-soft: var(--danger-soft);
   --blue: var(--info);
   --blue-soft: var(--info-soft);
+  --primary: var(--accent);
+  --primary-hover: var(--accent-strong);
+  --primary-soft: var(--accent-soft);
+  --surface: var(--surface-solid);
+  --surface-subtle: var(--surface-raised);
+  --material: var(--chrome);
+  --material-solid: var(--chrome);
+  --separator: var(--line);
+  --separator-strong: var(--line-strong);
+  --text-primary: var(--text);
+  --border-color: var(--line);
+  --surface-primary: var(--surface-solid);
+  --surface-secondary: var(--surface-raised);
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--accent);
 }
 
 html,
@@ -3280,7 +3298,7 @@ textarea:focus-visible {
   padding: 24px 14px 18px;
   background: var(--chrome);
   border-right: 1px solid var(--line);
-  box-shadow: 12px 0 34px rgba(0, 0, 0, 0.08);
+  box-shadow: none;
 }
 
 @supports ((-webkit-backdrop-filter: blur(18px)) or (backdrop-filter: blur(18px))) {
@@ -3304,8 +3322,8 @@ textarea:focus-visible {
 .brand-mark {
   color: var(--accent);
   background: var(--accent-soft);
-  border: 1px solid rgba(84, 214, 232, 0.5);
-  box-shadow: 0 0 22px rgba(84, 214, 232, 0.1);
+  border: 0;
+  box-shadow: none;
 }
 
 .nav-list {
@@ -3321,15 +3339,15 @@ textarea:focus-visible {
 
 .nav-item:hover {
   color: var(--text);
-  background: rgba(145, 185, 255, 0.08);
+  background: var(--surface-hover);
   border-color: var(--line);
 }
 
 .nav-item.active {
   color: var(--text);
   background: var(--accent-soft);
-  border-color: rgba(84, 214, 232, 0.24);
-  box-shadow: inset 2px 0 var(--accent);
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .nav-item.active svg {
@@ -3367,8 +3385,8 @@ textarea:focus-visible {
 }
 
 .avatar {
-  color: #d9f4ff;
-  background: #31536b;
+  color: #ffffff;
+  background: var(--accent);
 }
 
 .topbar {
@@ -3411,7 +3429,7 @@ textarea:focus-visible {
 .dot {
   background: var(--danger);
   border-color: var(--canvas);
-  box-shadow: 0 0 10px rgba(255, 129, 124, 0.45);
+  box-shadow: none;
 }
 
 .content {
@@ -3475,16 +3493,16 @@ h2 span,
 }
 
 .primary-button {
-  color: #062129;
+  color: #ffffff;
   background: var(--accent);
-  border-color: rgba(84, 214, 232, 0.42);
-  box-shadow: 0 0 22px rgba(84, 214, 232, 0.12);
+  border-color: var(--accent);
+  box-shadow: none;
 }
 
 .primary-button:hover:not(:disabled) {
-  color: #03161c;
-  background: #76e2ed;
-  box-shadow: 0 0 26px rgba(84, 214, 232, 0.2);
+  color: #ffffff;
+  background: var(--accent-strong);
+  box-shadow: none;
 }
 
 .secondary-button,
@@ -3502,7 +3520,7 @@ h2 span,
 }
 
 .danger-button {
-  color: #24100f;
+  color: #ffffff;
   background: var(--danger);
 }
 
@@ -3515,7 +3533,7 @@ h2 span,
 .text-button:hover,
 .more-button:hover,
 .row-arrow:hover {
-  color: #a8f1f7;
+  color: var(--accent-strong);
 }
 
 .metrics {
@@ -3531,12 +3549,12 @@ h2 span,
 }
 
 .metric:first-child {
-  box-shadow: inset 2px 0 var(--danger);
+  box-shadow: none;
 }
 
 .metric.accent {
   background: var(--surface-raised);
-  box-shadow: inset 2px 0 var(--accent);
+  box-shadow: none;
 }
 
 .metric strong,
@@ -3665,12 +3683,12 @@ select.filter-button {
 }
 
 .card-emblem.ink {
-  background: #26313a;
+  background: var(--surface-raised);
   color: var(--text);
 }
 
 .card-emblem.blue {
-  background: rgba(145, 185, 255, 0.18);
+  background: var(--info-soft);
   color: var(--info);
 }
 
@@ -3689,7 +3707,7 @@ select.filter-button {
 .reminder-icon,
 .calendar-event-dot,
 .mini-dot {
-  box-shadow: 0 0 12px rgba(84, 214, 232, 0.16);
+  box-shadow: none;
 }
 
 .status-pill,
@@ -3705,7 +3723,7 @@ select.filter-button {
 .status-pill.success {
   color: var(--success);
   background: var(--success-soft);
-  border-color: rgba(85, 211, 154, 0.25);
+  border-color: var(--line);
 }
 
 .overdue-pill,
@@ -3716,18 +3734,18 @@ select.filter-button {
 
 .progress-line,
 .progress-track {
-  background: #263541;
+  background: var(--line);
 }
 
 .progress-line span,
 .progress-track span {
   background: var(--accent);
-  box-shadow: 0 0 12px rgba(84, 214, 232, 0.38);
+  box-shadow: none;
 }
 
 .progress-track span.complete {
   background: var(--success);
-  box-shadow: 0 0 12px rgba(85, 211, 154, 0.34);
+  box-shadow: none;
 }
 
 .date-tile.amber,
@@ -3804,7 +3822,7 @@ select.filter-button {
 }
 
 .check-button:hover {
-  color: #062129;
+  color: #ffffff;
   background: var(--accent);
   border-color: var(--accent);
 }
@@ -3852,7 +3870,7 @@ select.filter-button {
 
 .calendar-day.has-events {
   background: var(--surface-raised);
-  border-color: rgba(84, 214, 232, 0.34);
+  border-color: var(--line-strong);
 }
 
 .calendar-day.has-events:hover {
@@ -3875,7 +3893,7 @@ select.filter-button {
 }
 
 .modal-backdrop {
-  background: rgba(1, 7, 12, 0.7);
+  background: rgba(36, 32, 27, 0.3);
 }
 
 .modal {
@@ -3908,7 +3926,7 @@ select.filter-button {
 .toast {
   color: var(--text);
   background: var(--surface-raised);
-  border-color: rgba(85, 211, 154, 0.34);
+  border-color: var(--line-strong);
   box-shadow: var(--shadow-overlay);
 }
 
@@ -3953,7 +3971,7 @@ select.filter-button {
 }
 
 .sidebar-scrim {
-  background: rgba(1, 7, 12, 0.66);
+  background: rgba(36, 32, 27, 0.3);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -3967,7 +3985,7 @@ select.filter-button {
 
 @media (max-width: 680px) {
   .sidebar {
-    box-shadow: 20px 0 50px rgba(0, 0, 0, 0.42);
+    box-shadow: 12px 0 32px rgba(30, 48, 35, 0.12);
   }
 
   .topbar {
@@ -4008,10 +4026,10 @@ select.filter-button {
 
 @media (prefers-contrast: more) {
   :root {
-    --line: rgba(220, 235, 245, 0.44);
-    --line-strong: rgba(220, 235, 245, 0.68);
-    --text-secondary: #c1d0d9;
-    --text-tertiary: #a3b6c2;
+    --line: #a39c92;
+    --line-strong: #6b6358;
+    --text-secondary: #49433b;
+    --text-tertiary: #575047;
   }
 
   .card-row,
@@ -4061,8 +4079,7 @@ select.filter-button {
   }
 }
 
-/* Command-center polish: restrained telemetry texture and stronger empty-state
-   hierarchy keep the dark shell intentional without turning data into glass. */
+/* Subtle structure for empty states and section boundaries. */
 body {
   position: relative;
   isolation: isolate;
@@ -4075,8 +4092,8 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background-image:
-    linear-gradient(rgba(145, 185, 255, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(145, 185, 255, 0.035) 1px, transparent 1px);
+    linear-gradient(rgba(95, 82, 64, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(95, 82, 64, 0.035) 1px, transparent 1px);
   background-size: 40px 40px;
   mask-image: linear-gradient(to bottom, black, transparent 78%);
   opacity: 0.65;
@@ -4098,7 +4115,7 @@ body::before {
   right: 42px;
   height: 1px;
   pointer-events: none;
-  background: linear-gradient(90deg, transparent, rgba(84, 214, 232, 0.4), transparent);
+  background: linear-gradient(90deg, transparent, var(--line-strong), transparent);
   opacity: 0.55;
 }
 
@@ -4120,7 +4137,7 @@ body::before {
   margin: 0 7px 2px 0;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 10px rgba(84, 214, 232, 0.7);
+  box-shadow: none;
 }
 
 .metrics {
@@ -4157,7 +4174,7 @@ body::before {
 
 .metric.accent::after {
   background: var(--accent);
-  box-shadow: 0 0 10px rgba(84, 214, 232, 0.8);
+  box-shadow: none;
   opacity: 1;
 }
 
@@ -4170,8 +4187,8 @@ body::before {
   border-radius: 10px;
   background-color: var(--surface-solid);
   background-image:
-    linear-gradient(rgba(145, 185, 255, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(145, 185, 255, 0.035) 1px, transparent 1px);
+    linear-gradient(rgba(95, 82, 64, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(95, 82, 64, 0.035) 1px, transparent 1px);
   background-size: 24px 24px;
 }
 
@@ -4188,9 +4205,9 @@ body::before {
 }
 
 .empty-icon {
-  border: 1px solid rgba(84, 214, 232, 0.26);
+  border: 1px solid var(--line-strong);
   background: var(--accent-soft);
-  box-shadow: 0 0 26px rgba(84, 214, 232, 0.12);
+  box-shadow: var(--shadow-control);
 }
 
 .empty-state strong {

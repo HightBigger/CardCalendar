@@ -32,7 +32,7 @@ async function joinedCard(db: CatalogDatabase, name: string) {
   const importedProgress = await import("../src/modules/progress/service");
   const { addProgressEntry } = ("default" in importedProgress ? importedProgress.default : importedProgress) as typeof import("../src/modules/progress/service");
   await addProgressEntry(db.member.userId, cycleId, { entryDate: today, countDelta: 2, amountDelta: 0, note: "归档前年费进度历史" });
-  return { card, participationId, taskId, today };
+  return { card, participationId, taskId, periodId: task.periodId, today };
 }
 
 async function archiveBusinessSnapshot(db: CatalogDatabase, cardId: string, participationId: string) {
@@ -83,6 +83,7 @@ for (const policy of ["keep", "stop"] as const) {
     const row = page.locator(".card-row").filter({ hasText: fixture.card.name });
     await row.getByRole("button", { name: "编辑", exact: true }).click();
     const edit = page.getByRole("dialog", { name: "编辑卡片", exact: true });
+    await edit.getByText("更多设置", { exact: true }).click();
     const status = edit.getByRole("combobox", { name: "卡片状态", exact: true });
     await expect(status).toBeEnabled();
     await expect(status).toHaveValue("active");
@@ -99,6 +100,7 @@ for (const policy of ["keep", "stop"] as const) {
     expect(archiveTransport.requests).toHaveLength(0);
     for (const nextStatus of ["suspended", "active"] as const) {
       await row.getByRole("button", { name: "编辑", exact: true }).click();
+      await edit.getByText("更多设置", { exact: true }).click();
       await status.selectOption(nextStatus);
       const patchCount = archiveTransport.patches.length;
       await edit.getByRole("button", { name: "保存卡片", exact: true }).click();
@@ -169,15 +171,16 @@ for (const policy of ["keep", "stop"] as const) {
     await expect(detail.getByRole("button", { name: "设置累计值", exact: true })).toHaveCount(0);
     await capture("card-history");
     await detail.locator(`[data-participation-id="${fixture.participationId}"]`).getByRole("button", { name: "查看活动", exact: true }).click();
-    const period = page.locator(".period-card").filter({ hasText: "2026-10-01" });
+    const period = page.locator(`.period-card[data-period-id="${fixture.periodId}"]`);
     await expect(period).toContainText("已取消");
-    await expect(period.getByRole("button", { name: "更新进度／核对达标", exact: true })).toBeDisabled();
+    await expect(period.getByRole("button", { name: "更新进度", exact: true })).toBeDisabled();
     await expect(page.locator(".reward-card")).toHaveCount(1);
+    await page.locator(".activity-history > summary").click();
     await expect(page.getByText("card.archived", { exact: false })).toBeVisible();
     await period.scrollIntoViewIfNeeded();
     await capture("periods");
-    await period.getByRole("button", { name: "查看进度与核对历史", exact: true }).click();
-    const task = page.getByRole("dialog", { name: "查看进度与核对历史", exact: true });
+    await period.getByRole("button", { name: "查看进度", exact: true }).click();
+    const task = page.getByRole("dialog", { name: "查看进度", exact: true });
     await expect(task).toContainText("归档前活动消费历史");
     await expect(task.locator(".progress-facts")).toContainText("3 笔");
     await expect(task.getByRole("button", { name: "保存累计观察", exact: true })).toBeDisabled();
@@ -204,7 +207,7 @@ for (const policy of ["keep", "stop"] as const) {
     await reward.getByLabel("实际到账数量（CNY）", { exact: true }).fill("10.00");
     await reward.getByLabel("到账依据", { exact: true }).fill("归档后核对实际到账");
     await reward.getByRole("button", { name: "确认实际到账", exact: true }).click();
-    await expect(reward).toContainText("归档后核对实际到账");
+    await expect(reward.locator("p").filter({ hasText: "归档后核对实际到账" })).toHaveCount(1);
     await reward.getByRole("heading", { name: "领取与到账历史", exact: true }).scrollIntoViewIfNeeded();
     await capture("reward-receipt");
     expect((await db.pool.query("select count(*)::int as count from activity_reward_events where participation_id=$1 and event_type='receipt'", [fixture.participationId])).rows[0].count).toBe(1);
@@ -216,6 +219,7 @@ for (const policy of ["keep", "stop"] as const) {
     const archiveCount = archiveTransport.requests.length;
     const patchCount = archiveTransport.patches.length;
     await row.getByRole("button", { name: "编辑", exact: true }).click();
+    await edit.getByText("更多设置", { exact: true }).click();
     await expect(status).toBeDisabled();
     await expect(status).toHaveValue("archived");
     await expect(status.locator("option")).toHaveText(["已归档"]);
