@@ -54,7 +54,7 @@ export function AppShell({ profile, view, gates, notifications = 0, onNavigate, 
     <a className="skip-link" href="#workspace-content">跳到内容</a>
     <button className={"sidebar-scrim" + (mobileNav ? " visible" : "")} aria-hidden="true" tabIndex={-1} onClick={() => close()} />
     <aside className={"sidebar" + (mobileNav ? " sidebar-open" : "")} id="app-sidebar" ref={sidebarRef}>
-      <div className="brand"><span className="brand-mark"><Icon name="credit" size={20} /></span><span>卡片档案</span><button className="icon-button sidebar-close" aria-label="关闭导航" onClick={() => close()}><Icon name="close" size={18} /></button></div>
+      <div className="brand"><span className="brand-mark"><Icon name="credit" size={20} /></span><span>Cardfolio</span><button className="icon-button sidebar-close" aria-label="关闭导航" onClick={() => close()}><Icon name="close" size={18} /></button></div>
       <nav className="nav-list" aria-label="主导航">
         {nav.map((item) => <button key={item.key} className={"nav-item" + (view === item.key ? " active" : "")} aria-current={view === item.key ? "page" : undefined} onClick={() => navigate(item.key)}><Icon name={item.icon} size={18} /><span>{item.label}</span></button>)}
       </nav>

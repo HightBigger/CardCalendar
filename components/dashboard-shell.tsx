@@ -116,7 +116,7 @@ export function DashboardShell({
           <span className="brand-mark">
             <Icon name="calendar" size={20} />
           </span>
-          <span>卡片档案</span>
+          <span>Cardfolio</span>
           <small>信用卡管理</small>
         </div>
         <nav className="nav-list" aria-label="主导航">

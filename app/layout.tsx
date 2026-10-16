@@ -2,7 +2,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "卡片档案 | Cardfolio",
+  title: "Cardfolio",
   description: "信用卡信息、年费与重要事项管理",
 };
 

@@ -39,7 +39,7 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
       <div className="auth-backdrop" aria-hidden="true">
         <div className="auth-art-card">
           <div className="auth-art-card-face">
-            <span className="auth-art-card-mark"><Icon name="credit" size={20} /><span>卡片档案</span></span>
+            <span className="auth-art-card-mark"><Icon name="credit" size={20} /><span>Cardfolio</span></span>
             <span className="auth-art-chip" />
             <span className="auth-art-card-number">••••　••••　••••</span>
             <span className="auth-art-card-line" />
@@ -54,7 +54,7 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
       <section className="auth-card" aria-labelledby="auth-title">
         <div className="auth-brand">
           <span className="brand-mark"><Icon name="credit" size={20} /></span>
-          <span>卡片档案</span>
+          <span>Cardfolio</span>
         </div>
         {registering && <a className="auth-back" href="/login">← 返回登录</a>}
         <h1 id="auth-title">{registering ? "创建账号" : "欢迎回来"}</h1>
