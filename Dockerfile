@@ -7,7 +7,7 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm install --global npm@11.9.0 --no-audit --no-fund
 COPY package.json package-lock.json ./
-RUN --mount=type=cache,target=/root/.npm \
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     npm ci --legacy-peer-deps --no-audit --no-fund
 
 FROM dependencies AS build
@@ -18,9 +18,8 @@ FROM ${NODE_IMAGE} AS production-dependencies
 WORKDIR /app
 RUN npm install --global npm@11.9.0 --no-audit --no-fund
 COPY package.json package-lock.json ./
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci --legacy-peer-deps --omit=dev --no-audit --no-fund && \
-    npm cache clean --force
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    npm ci --legacy-peer-deps --omit=dev --no-audit --no-fund
 
 # The repository-defined worker entrypoint uses tsx. Add only tsx and its
 # platform-specific esbuild runtime to the production dependency tree.

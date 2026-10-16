@@ -4,18 +4,18 @@
 
 先将域名解析到服务器 IP，放行 TCP 80/443。脚本默认启动 Caddy 自动配置 HTTPS；如果已有 Nginx、宝塔或其他 HTTPS 入口，使用 `--no-proxy`，将已有入口转发到 `127.0.0.1:3000`。
 
-开发机先提交并推送发布代码，再推送版本标签（下面以 `v0.1.0` 为例）：
+开发机先提交并推送发布代码，再推送版本标签（下面以 `v0.1.1` 为例）：
 
 ```bash
 git push origin main
-git tag -a v0.1.0 -m "Cardfolio v0.1.0"
-git push origin v0.1.0
+git tag -a v0.1.1 -m "Cardfolio v0.1.1"
+git push origin v0.1.1
 ```
 
 GitHub Actions 全部通过后，在已安装 Docker Engine 24+、Compose v2.20+、Git 和 OpenSSL 的 Linux 服务器执行：
 
 ```bash
-git clone --branch v0.1.0 --depth 1 https://github.com/HightBigger/CardCalendar.git
+git clone --branch v0.1.1 --depth 1 https://github.com/HightBigger/CardCalendar.git
 cd CardCalendar
 bash scripts/deploy.sh cards.example.com
 ```
@@ -36,7 +36,7 @@ bash scripts/deploy.sh cards.example.com --no-proxy
 
 ```bash
 git fetch --tags
-git checkout --detach v0.1.1
+git checkout --detach v0.1.2
 bash scripts/deploy.sh cards.example.com
 ```
 
